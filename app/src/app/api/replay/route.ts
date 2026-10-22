@@ -1,4 +1,5 @@
 import { ideaActions, handleIdea } from "@/lib/replay/idea-api";
+import { transcriptActions, handleTranscript } from "@/lib/replay/transcript-api";
 import { researchActions, handleResearch } from "@/lib/replay/research-api";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     guard(request); const raw = await body(request); initializeQueue();
+    if (raw && typeof raw.action === "string" && raw.action.startsWith("transcript-")) return handleTranscript(transcriptActions.parse(raw));
     if (raw && typeof raw.action === "string" && raw.action.startsWith("idea-")) return handleIdea(ideaActions.parse(raw));
     const research = researchActions.safeParse(raw);
     if (research.success) return handleResearch(research.data);

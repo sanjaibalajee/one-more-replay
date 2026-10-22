@@ -7,7 +7,7 @@
 | `workspace/` | Coordinates focused pages and explicit actions. `use-workspace-data.ts` owns coalesced refreshes, health checks and abortable activity polling; unchanged activity retains catalogue identity. |
 | `shell/` | Navigation, account switching and appearance control. |
 | `library/` | Catalogue presentation, filters, selection, pagination, link/import/upload forms. `use-library-state.ts` owns its view state and derived results. |
-| `reports/` | Individual/comparison reports, source links, story structure and proposed scripts. |
+| `reports/` | Individual/comparison reports, source links, story structure and proposed scripts. `evidence/` owns input checks and the lazy transcript review, session drafts and subtitle exports. |
 | `research/` | Adaptation, own/peer gap selection, saved research and per-video annotations. |
 | `collections/`, `inspiration/`, `analytics/` | Collection management, saved inspiration and descriptive catalogue analytics. |
 | `ideas/` | Own idea capture, saved drafts and stages, optional chat and script read-through. Reader loads on demand; feature styles live in `ideas.module.css`. |

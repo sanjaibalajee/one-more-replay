@@ -55,7 +55,7 @@ export const comparisonSchema = z.object({
   differences: z.array(z.string()), nextExperiments: z.array(z.string()), limitations: z.array(z.string()),
 });
 export const comparisonV2Schema = comparisonSchema.extend({ patterns: z.array(comparisonSchema.shape.patterns.element.extend({ examples: z.array(z.object({ reelId: z.string(), evidenceIds: refs })).min(2) })) });
-export type Analysis = z.infer<typeof storedAnalysisSchema> & { promptRevision?: string; sources?: import("./evidence").EvidenceSource[] };
+export type Analysis = z.infer<typeof storedAnalysisSchema> & { promptRevision?: string; transcriptRevision?: string; sources?: import("./evidence").EvidenceSource[] };
 export type AnalysisV2 = z.infer<typeof analysisSchema>;
 export type Comparison = z.infer<typeof comparisonSchema>;
 export type Provider = "codex" | "openai";
@@ -67,8 +67,9 @@ export interface Account {
   collectionNote: string; reelCount?: number; profileImageUrl?: string; profileCheckedAt?: string; profileError?: string | null;
   role?: "own" | "competitor" | "inspiration"; kind?: "creator" | "inbox"; platform?: import("./research-types").Platform;
 }
-export interface TranscriptSegment { start: number; end: number; text: string }
-export interface Transcript { text: string; language: string | null; segments: TranscriptSegment[]; engine: string; model: string; status: "completed" | "no-audio" | "unavailable"; note: string }
+export interface TranscriptSegment { start: number; end: number; text: string; avgLogProb?: number; noSpeechProb?: number; compressionRatio?: number; reviewed?: boolean }
+export interface Transcript { text: string; language: string | null; languageProbability?: number; segments: TranscriptSegment[]; engine: string; model: string; status: "completed" | "no-audio" | "unavailable"; note: string; reviewed?: boolean }
+export interface TranscriptReview { revision: string; sourceRevision: string; mediaRevision: string; updatedAt: string; corrections: { index: number; text: string }[] }
 export interface Frame { file: string; seconds: number }
 export interface MediaEvidence { samplingVersion?: number; duration: number; width: number; height: number; hasAudio: boolean; frames: Frame[]; sceneChanges: number[]; transcript: Transcript; warnings: string[] }
 export interface Performance {
@@ -86,6 +87,7 @@ export interface Reel {
   evidence: MediaEvidence | null; analysis: Analysis | null; analysisProvider: string | null; analyzedAt: string | null;
   performance?: Performance;
   analysisUsage?: import("./usage-types").ModelUsage;
+  transcriptReview?: TranscriptReview;
 }
 export interface Job {
   id: string; kind: "collect" | "analyze" | "compare" | "resolve" | "adapt" | "gap" | "refine"; accountId: string | null;

@@ -1,4 +1,5 @@
 import type { Account, Reel } from "./types";
+import { currentTranscript } from "./transcript";
 const normalize = (value: string) =>
   value.normalize("NFKC").toLocaleLowerCase();
 export function buildCatalogueSearch(
@@ -28,7 +29,7 @@ export function buildCatalogueSearch(
         ...(report?.findings || []).map(
           (finding) => `${finding.title} ${finding.detail}`,
         ),
-        reel.evidence?.transcript.text,
+        currentTranscript(reel)?.text,
       ]
         .filter(Boolean)
         .join("\n");

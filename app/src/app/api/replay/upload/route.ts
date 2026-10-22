@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     await unlink(temporary); temporary = null;
     await unlink(path.join(dir, "evidence.json")).catch(() => {});
     const latest = existing ? getReel(id)! : null;
-    const reel: Reel = latest ? { ...latest, mediaRevision: randomUUID(), durationSeconds: Number(info.format.duration), evidence: null, analysis: null, analysisUsage: undefined, analyzedAt: null, analysisProvider: null, status: "idle", error: null } : {
+    const reel: Reel = latest ? { ...latest, transcriptReview: undefined, mediaRevision: randomUUID(), durationSeconds: Number(info.format.duration), evidence: null, analysis: null, analysisUsage: undefined, analyzedAt: null, analysisProvider: null, status: "idle", error: null } : {
       id, accountId, mediaRevision: randomUUID(), durationSeconds: Number(info.format.duration), shortcode: "local-video", url: "", caption: String(form.get("caption") || file.name).slice(0, 20000),
       thumbnail: "", videoUrl: "", views: null, likes: null, comments: null, postedAt: null,
       collectedAt: new Date().toISOString(), source: "upload", status: "idle", error: null, starred: false, evidence: null, analysis: null, analysisProvider: null, analyzedAt: null,

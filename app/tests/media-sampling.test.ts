@@ -22,7 +22,7 @@ test("upgrading cached sampling preserves saved report frames and caches the com
   const phases: string[] = [];
   const evidence = await extractEvidence(reel, {whisperModel: "base", language: ""} as Settings, new AbortController().signal, (_phase, detail) => phases.push(detail));
   assert.ok(samplingComplete(evidence));
-  assert.ok(evidence.frames.every(frame => /^frame-v2-/.test(frame.file)));
+  assert.ok(evidence.frames.every(frame => /^frame-v3-/.test(frame.file)));
   assert.equal(readFileSync(path.join(dir, "frame-00.jpg"), "utf8"), "Saved report's original frame");
   assert.ok(evidence.frames.some(frame => frame.seconds >= 1.75));
   assert.ok(phases.some(detail => detail.startsWith("Extracting frame")));

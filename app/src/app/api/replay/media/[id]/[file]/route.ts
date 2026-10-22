@@ -5,13 +5,14 @@ import path from "node:path";
 import { mediaDir } from "@/lib/replay/paths";
 import { getReel } from "@/lib/replay/store";
 import { apiError, guard } from "@/lib/replay/http";
+import { isFrameFile } from "@/lib/replay/media-files";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: { params: Promise<{ id: string; file: string }> }) {
   try {
     guard(request); const { id, file } = await context.params;
-    if (!getReel(id) || !/^(video\.mp4|frame-(?:\d{2}|v2-\d{1,3}-\d{2})\.jpg)$/.test(file)) return new Response(null, { status: 404 });
+    if (!getReel(id) || (file !== "video.mp4" && !isFrameFile(file))) return new Response(null, { status: 404 });
     const location = path.join(mediaDir(id), file);
     if (!existsSync(location)) return new Response(null, { status: 404 });
     const size = (await stat(location)).size;

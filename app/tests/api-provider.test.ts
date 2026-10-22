@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { reportFixture } from "./fixtures/report";
 import type { MediaEvidence, Reel, Settings } from "../src/lib/replay/types";
+import { transcriptContentVersion } from "../src/lib/replay/transcript";
 const directory = mkdtempSync(path.join(tmpdir(), "replay-api-")); process.env.REPLAY_DATA_DIR = directory;
 const store = await import("../src/lib/replay/store");
 const { analyze } = await import("../src/lib/replay/intelligence");
@@ -21,10 +22,11 @@ test("API analysis sends image inputs, strict schema, brief and the chosen reaso
   const settings: Settings = { provider: "openai", openaiModel: "gpt-6.1-sol", openaiEffort: "high", codexModel: "", whisperModel: "base", language: "", brandContext: "Fixture context.", brief: { business: "Repair shop", audience: "New cyclists", language: "English", tone: "Direct", constraints: "One person and phone", goal: "Repair enquiries" } };
   const originalFetch = globalThis.fetch;
   let sent: Record<string, unknown> | undefined;
+  const generated = reportFixture();
   globalThis.fetch = async (request, init) => {
     assert.equal(new URL(typeof request === "string" ? request : request instanceof URL ? request.href : request.url).hostname, "api.openai.com");
     sent = JSON.parse(String(init?.body));
-    return Response.json({ id: "resp_fixture", object: "response", created_at: 1, status: "completed", model: settings.openaiModel, output: [{ type: "message", id: "msg_fixture", role: "assistant", status: "completed", content: [{ type: "output_text", text: JSON.stringify(reportFixture()), annotations: [] }] }] });
+    return Response.json({ id: "resp_fixture", object: "response", created_at: 1, status: "completed", model: settings.openaiModel, output: [{ type: "message", id: "msg_fixture", role: "assistant", status: "completed", content: [{ type: "output_text", text: JSON.stringify(generated), annotations: [] }] }] });
   };
   try {
     const response = await analyze(reel, evidence, settings, new AbortController().signal);
@@ -33,7 +35,14 @@ test("API analysis sends image inputs, strict schema, brief and the chosen reaso
     assert.equal(response.result.version, 2); assert.equal(response.result.suggestedAngles.length, 3);
     const markdown = reelMarkdown({ ...reel, analysis: response.result });
     assert.match(markdown, /## Evidence index/); assert.match(markdown, /Say: Synthetic opening 1/); assert.match(markdown, /F1 \[0:00\]/);
-    await analyze(reel, evidence, { ...settings, openaiEffort: "default" }, new AbortController().signal);
+    generated.hook.spokenHook = "A corrected ceramic kettle.";
+    const reviewed: Reel = { ...reel, transcriptReview: { revision: "review-fixture", mediaRevision: "", sourceRevision: transcriptContentVersion(evidence.transcript), updatedAt: new Date().toISOString(), corrections: [{ index: 0, text: generated.hook.spokenHook }] } };
+    const corrected = await analyze(reviewed, evidence, { ...settings, openaiEffort: "default" }, new AbortController().signal);
+    assert.equal(corrected.result.sources?.find(source => source.id === "T1")?.text, generated.hook.spokenHook);
+    assert.equal(corrected.result.sources?.find(source => source.id === "T1")?.origin, "user-reviewed");
+    assert.equal(evidence.transcript.text, "Synthetic words.");
+    assert.match(JSON.stringify(sent), /A corrected ceramic kettle/);
+    assert.doesNotMatch(JSON.stringify(sent), /Synthetic words\./);
     assert.equal(sent?.reasoning, undefined);
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -41,16 +50,19 @@ test("API analysis sends image inputs, strict schema, brief and the chosen reaso
 test("comparison citations require two distinct supplied Reels and valid source IDs", async () => {
   const { compare } = await import("../src/lib/replay/intelligence");
   const { evidenceSources } = await import("../src/lib/replay/evidence");
-  const evidence: MediaEvidence = { duration: 12, width: 10, height: 10, hasAudio: false, frames: [{ file: "frame-00.jpg", seconds: 0 }], sceneChanges: [], transcript: { text: "", segments: [], engine: "none", model: "", language: null, status: "no-audio", note: "Test." }, warnings: [] };
+  const evidence: MediaEvidence = { duration: 12, width: 10, height: 10, hasAudio: false, frames: [{ file: "frame-v3-0-00.jpg", seconds: 0 }], sceneChanges: [], transcript: { text: "", segments: [], engine: "none", model: "", language: null, status: "no-audio", note: "Test." }, warnings: [] };
   const first: Reel = { accountId: "fixture", shortcode: "first", url: "", thumbnail: "", videoUrl: "", postedAt: null, source: "upload", status: "completed", error: null, starred: false, analysisProvider: "Synthetic fixture", analyzedAt: "2026-10-21T00:00:00Z", id: "first", caption: "Synthetic first", views: null, likes: null, comments: null, collectedAt: "2026-10-21T00:00:00Z", analysis: { ...reportFixture(), sources: [] }, evidence };
   first.analysis!.sources = evidenceSources(first, evidence);
+  await writeFile(path.join(mediaDir(first.id), "frame-v3-0-00.jpg"), Buffer.from([1, 2, 3]));
   const second = { ...first, id: "second", caption: "Synthetic second" };
   const result = { title: "Synthetic comparison", summary: "A weak comparison.", patterns: [{ pattern: "A concrete object", reelIds: ["first", "second"], evidence: "Supplied frames.", howToAdapt: "Test one variable.", examples: [{ reelId: "first", evidenceIds: ["F1"] }, { reelId: "second", evidenceIds: ["F1"] }] }], differences: [], nextExperiments: [], limitations: ["Synthetic fixture."] };
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ id: "resp_comparison", object: "response", created_at: 1, status: "completed", output: [{ type: "message", id: "msg", role: "assistant", status: "completed", content: [{ type: "output_text", text: JSON.stringify(result), annotations: [] }] }] });
+  let comparisonInput = "";
+  globalThis.fetch = async (_request, init) => { comparisonInput = String(init?.body); return Response.json({ id: "resp_comparison", object: "response", created_at: 1, status: "completed", output: [{ type: "message", id: "msg", role: "assistant", status: "completed", content: [{ type: "output_text", text: JSON.stringify(result), annotations: [] }] }] }); };
   const settings: Settings = { provider: "openai", openaiModel: "gpt-6.1-sol", openaiEffort: "default", codexModel: "", whisperModel: "base", language: "", brandContext: "" };
   try {
     assert.ok((await compare([first, second], "synthetic-comparison", settings, new AbortController().signal)).result.patterns.length);
+    assert.match(comparisonInput, /input_image/, "Follow-up analysis must receive versioned frame images, not only report text");
     result.patterns[0].examples[1].evidenceIds = ["F999"];
     await assert.rejects(compare([first, second], "synthetic-comparison", settings, new AbortController().signal), /unavailable evidence/);
     result.patterns[0].examples[1] = { reelId: "first", evidenceIds: ["F1"] };

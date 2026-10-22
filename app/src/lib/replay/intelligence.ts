@@ -17,6 +17,8 @@ import type { ModelUsage } from "./usage-types";
 import { codexFailure, codexUsage, recordUsage, tokenUsage, unknownTokens } from "./usage";
 import { assertConnection } from "./run-config";
 import { prepareModelExecution } from "./model-execution";
+import { analysisEvidence, transcriptContentVersion } from "./transcript";
+import { evidenceQuality } from "./evidence-quality";
 
 export const CODEX = process.env.CODEX_BIN || "codex";
 export async function readiness(): Promise<Readiness> {
@@ -84,6 +86,7 @@ export async function structured<T>(name: string, schema: z.ZodType<T>, prompt: 
 }
 
 export function analysisPrompt(reel: Reel, evidence: MediaEvidence, settings: Settings): string {
+  evidence = analysisEvidence(reel, evidence);
   const sources = evidenceSources(reel, evidence);
   return `Write an evidence-linked version 2 research report. Answer: what specifically distinguishes THIS Reel? Avoid generic praise such as "engaging visuals" or "relatable content" without a concrete mechanism.
 EVIDENCE RULES: Every interpretive field must have evidenceIds from the source index below. F IDs are attached frames in that exact order, T IDs are exact ASR segments, M IDs are observed metrics, D IDs are metadata. Cite only supplied IDs. Do not rewrite or translate source quotations. hook.spokenHook must be one contiguous, exact excerpt from the supplied ASR, with no ellipses or added words, or say unavailable when the opening has no supplied speech. The interface displays cited ASR text itself. Absence claims must be qualified as "not visible in sampled evidence". Narrative timestamps must lie within the supplied duration. support.patterns must align one-to-one with transferablePatterns. Cite supporting sources for summary, pacing, payoff and CTA. A citation is support for an interpretation, not proof that it caused performance.
@@ -96,14 +99,16 @@ BREVITY: Keep 3 to 5 story beats, 3 to 5 observations, 2 to 4 findings and 2 to 
 IDEAS: ${CONCEPT_RULES}
 CREATIVE BRIEF (user supplied): ${JSON.stringify({ ...settings.brief, additionalContext: settings.brandContext })}
 REEL: ${JSON.stringify({ caption: reel.caption, views: reel.views, likes: reel.likes, comments: reel.comments, postedAt: reel.postedAt, collectedAt: reel.collectedAt, performance: reel.performance })}
-MEDIA: ${JSON.stringify({ duration: evidence.duration, width: evidence.width, height: evidence.height, hasAudio: evidence.hasAudio, transcriptStatus: evidence.transcript.status, sceneChangeEstimates: evidence.sceneChanges, warnings: evidence.warnings })}
+INPUT CHECKS: ${JSON.stringify(evidenceQuality(evidence))}. These are extraction and recognition signals, not a report quality or virality score. Check flagged wording before quoting it. User-corrected transcript lines are labeled as reviewed; untouched lines are still ASR. Do not treat an uncertain phrase as a fact or build a performance explanation on it. Temporal observations must cite a frame within 1 second of their timestamp or a transcript segment spanning it. Visual, text and editing observations require attached frame evidence; script observations require transcript evidence. A spoken hook must occur in cited transcript segments starting within the first 3 seconds, never a quote lifted from later segments. Transcript times describe segments, not individual words: qualify uncertainty about the opening when a long first segment makes word timing unclear. Keep story beats chronological and non-overlapping.
+MEDIA: ${JSON.stringify({ duration: evidence.duration, width: evidence.width, height: evidence.height, hasAudio: evidence.hasAudio, transcriptStatus: evidence.transcript.status, transcriptReviewed: Boolean(evidence.transcript.reviewed), sceneChangeEstimates: evidence.sceneChanges, warnings: evidence.warnings })}
 SOURCE INDEX: ${JSON.stringify(sources.map(({ file: _file, ...source }) => { void _file; return source; }))}`;
 }
 export async function analyze(reel: Reel, evidence: MediaEvidence, settings: Settings, signal: AbortSignal): Promise<{ result: Analysis; provider: string; usage: ModelUsage }> {
+  evidence = analysisEvidence(reel, evidence);
   const sources = evidenceSources(reel, evidence);
   const response = await structured("reel_analysis", analysisSchema, analysisPrompt(reel, evidence, settings), evidence.frames.map(f => path.join(mediaDir(reel.id), f.file)), path.join(mediaDir(reel.id), "analysis"), { ...settings, usageReelId: reel.id }, signal);
   validateAnalysis(response.result, evidence, sources);
-  return { ...response, result: { ...response.result, sources, promptRevision: PROMPT_REVISION } };
+  return { ...response, result: { ...response.result, sources, promptRevision: PROMPT_REVISION, transcriptRevision: transcriptContentVersion(evidence.transcript) } };
 }
 export async function compare(reels: Reel[], jobId: string, settings: Settings, signal: AbortSignal): Promise<{ result: Comparison; provider: string; usage: ModelUsage }> {
   const context = comparisonContext(reels), images = sourceImages(reels.filter(r=>r.analysis?.version===2 && r.analysis.sources?.length),2);

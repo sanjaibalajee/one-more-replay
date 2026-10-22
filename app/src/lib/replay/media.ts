@@ -52,12 +52,22 @@ export async function downloadReel(reel: Reel, signal: AbortSignal): Promise<str
   } finally { await unlink(raw).catch(()=>{}); await unlink(normalized).catch(()=>{}); }
 }
 
-export const SAMPLING_VERSION = 2;
+export const SAMPLING_VERSION = 3;
 export function frameTimes(duration: number, sceneChanges: number[] = []): number[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
   const end = Math.max(0, duration - 0.1);
   const times = new Set<number>([0, 0.5, 1, 2, 3, Number(end.toFixed(2))].filter(s => s < duration));
   for (let i = 1; i < 10; i++) times.add(Number((end * i / 10).toFixed(2)));
-  const candidates = sceneChanges.filter(s => Number.isFinite(s) && s > 3 && s + 0.08 < end).map(s => Number((s + 0.08).toFixed(2)));
+  const cuts = [...new Set(sceneChanges.filter(s => Number.isFinite(s) && s > 0 && s < end))].sort((a, b) => a - b);
+  // Land inside the new shot, including short cuts in the opening. Never
+  // overshoot a rapid shot by adding a fixed offset beyond its next boundary.
+  const shots = cuts.map((cut, index) => ({ start: cut, end: cuts[index + 1] ?? duration, seconds: Number((cut + Math.min(0.08, ((cuts[index + 1] ?? duration) - cut) / 2)).toFixed(2)) }));
+  const candidates = shots.map(shot => shot.seconds).filter(s => s < end);
+  const opening = shots.filter(shot => shot.start < 3 && shot.seconds < end && ![...times].some(time => time >= shot.start && time < shot.end)).sort((a, b) => (a.end - a.start) - (b.end - b.start)).map(shot => shot.seconds);
+  while (times.size < 20 && opening.length) {
+    const next = opening.shift()!;
+    if (Math.min(...[...times].map(t => Math.abs(next-t))) >= 0.04) times.add(next);
+  }
   while (times.size < 20 && candidates.length) {
     // Fill the largest uncovered scene gap. Keep a bounded image budget.
     candidates.sort((a, b) => Math.min(...[...times].map(t => Math.abs(b-t))) - Math.min(...[...times].map(t => Math.abs(a-t))));
@@ -70,7 +80,7 @@ export function frameTimes(duration: number, sceneChanges: number[] = []): numbe
 export function samplingComplete(evidence: MediaEvidence): boolean {
   return evidence.samplingVersion === SAMPLING_VERSION && evidence.frames.length > 0 && evidence.frames.some(frame => frame.seconds >= Math.max(0, evidence.duration - 0.25));
 }
-const transcriptSchema = z.object({ text: z.string(), language: z.string().nullable(), segments: z.array(z.object({ start: z.number().nonnegative(), end: z.number().nonnegative(), text: z.string() })), engine: z.string(), model: z.string(), status: z.enum(["completed", "no-audio", "unavailable"]), note: z.string() });
+const transcriptSchema = z.object({ text: z.string(), language: z.string().nullable(), languageProbability: z.number().min(0).max(1).optional(), segments: z.array(z.object({ start: z.number().nonnegative(), end: z.number().nonnegative(), text: z.string(), avgLogProb: z.number().optional(), noSpeechProb: z.number().min(0).max(1).optional(), compressionRatio: z.number().nonnegative().optional() })), engine: z.string(), model: z.string(), status: z.enum(["completed", "no-audio", "unavailable"]), note: z.string() });
 export async function extractEvidence(reel: Reel, settings: Settings, signal: AbortSignal, phase: (name: "extracting" | "transcribing", detail: string) => void): Promise<MediaEvidence> {
   const dir = mediaDir(reel.id), video = path.join(dir, "video.mp4"), manifest = path.join(dir, "evidence.json");
   let cached: MediaEvidence | undefined;
@@ -89,12 +99,20 @@ export async function extractEvidence(reel: Reel, settings: Settings, signal: Ab
   const cuts = await run("ffmpeg", ["-nostdin", "-hide_banner", "-i", video, "-vf", "scale=160:-2,select=gt(scene\\,0.3),showinfo", "-an", "-f", "null", "-"], { signal, timeout: 120000 });
   const sceneChanges = [...cuts.stderr.matchAll(/pts_time:([\d.]+)/g)].map(match => Number(match[1]));
   const times = frameTimes(duration, sceneChanges);
-  for (const seconds of times) {
-    phase("extracting", `Extracting frame ${frames.length + 1} of ${times.length} at ${seconds.toFixed(1)}s.`);
+  for (let offset = 0; offset < times.length; offset += 3) {
+    phase("extracting", `Extracting frames ${offset + 1}–${Math.min(offset + 3, times.length)} of ${times.length}.`);
     signal.throwIfAborted();
-    const file = `frame-v${SAMPLING_VERSION}-${seconds.toFixed(2).replace(".", "-")}.jpg`;
-    await run("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", String(seconds), "-i", video, "-frames:v", "1", "-vf", "scale=640:640:force_original_aspect_ratio=decrease:out_range=pc,format=yuvj420p", "-color_range", "pc", "-strict", "unofficial", "-q:v", "3", path.join(dir, file)], { signal, timeout: 30000 });
-    if (existsSync(path.join(dir, file))) frames.push({ file, seconds });
+    const batch = await Promise.allSettled(times.slice(offset, offset + 3).map(async seconds => {
+      const file = `frame-v${SAMPLING_VERSION}-${seconds.toFixed(2).replace(".", "-")}.jpg`;
+      await run("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-ss", String(seconds), "-i", video, "-frames:v", "1", "-vf", "scale=640:640:force_original_aspect_ratio=decrease:out_range=pc,format=yuvj420p", "-color_range", "pc", "-strict", "unofficial", "-q:v", "3", path.join(dir, file)], { signal, timeout: 30000 });
+      return existsSync(path.join(dir, file)) ? { file, seconds } : null;
+    }));
+    // Settle the whole batch before failing, so cancelled/failed jobs leave no
+    // background decoders writing into a later attempt's evidence directory.
+    for (const result of batch) {
+      if (result.status === "rejected") throw result.reason;
+      if (result.value) frames.push(result.value);
+    }
   }
   if (!frames.length) throw new Error("No readable video frames were extracted.");
   let transcript: Transcript = { text: "", language: null, segments: [], engine: "none", model: "", status: "no-audio", note: "This file has no audio track." };

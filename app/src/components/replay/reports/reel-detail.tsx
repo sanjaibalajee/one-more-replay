@@ -9,6 +9,7 @@ import { Concept } from "@/components/replay/reports/concept-card";
 import { EvidenceLinks } from "@/components/replay/reports/evidence-links";
 import { ReportSection } from "@/components/replay/reports/report-section";
 import { StoryStructure } from "@/components/replay/reports/story-structure";
+import { EvidenceReview } from "@/components/replay/reports/evidence/evidence-review";
 import { DownloadLinks } from "@/components/replay/shared/download-links";
 import { clock, date, fmt } from "@/components/replay/shared/format";
 import { asset, image } from "@/components/replay/shared/media-url";
@@ -20,6 +21,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { sourcesFor, type EvidenceSource } from "@/lib/replay/evidence";
 import { platformFor, platformLabel } from "@/lib/replay/research-types";
 import type { Job, Reel } from "@/lib/replay/types";
+import { transcriptChangedSinceReport } from "@/lib/replay/transcript";
+import dynamic from "next/dynamic";
 import {
   ChevronDown,
   Clapperboard,
@@ -31,6 +34,13 @@ import {
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const reportTabs = ["overview", "ideas", "evidence"];
+const TranscriptWorkbench = dynamic(
+  () =>
+    import("./evidence/transcript-workbench").then(
+      (module) => module.TranscriptWorkbench,
+    ),
+  { loading: () => <p>Loading transcript…</p> },
+);
 
 const mobileQuery = "(max-width: 620px)";
 
@@ -212,7 +222,9 @@ export function ReelDetail({
             )}
             <small>
               {source.kind === "transcript"
-                ? "Exact ASR output; transcription may contain errors."
+                ? source.origin === "user-reviewed"
+                  ? "Your corrected wording, saved with this report."
+                  : "Recognition output saved with this report; wording may contain errors."
                 : source.kind === "frame"
                   ? "A sampled frame, not continuous video."
                   : "Recorded evidence used for this report."}
@@ -317,7 +329,11 @@ export function ReelDetail({
         )}
       </aside>
       <div className="detail-report">
-        {reel.error && <Notice danger><ProviderError message={reel.error} /></Notice>}
+        {reel.error && (
+          <Notice danger>
+            <ProviderError message={reel.error} />
+          </Notice>
+        )}
         {job && (
           <div className="inline-progress">
             <JobProgress job={job} />
@@ -356,299 +372,309 @@ export function ReelDetail({
           </div>
         ) : (
           <>
-          <UsageReceipt usage={reel.analysisUsage} />
-          <Tabs value={tab} onValueChange={setTab} className="report-tabs">
-            {a.version !== 2 && (
-              <Notice>
-                This saved report uses the earlier format. Analyze again to add
-                evidence links, critical findings and shot lists.
-              </Notice>
-            )}
-            <div className="report-tools">
-              <TabsList
-                className="report-tab-list"
-                aria-label="Report sections"
-              >
-                {reportTabs.map((value) => (
-                  <TabsTrigger value={value} key={value}>
-                    {value.charAt(0).toUpperCase() + value.slice(1)}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-            {tab === "evidence" && <div className="source-tabs"><NativeSelect aria-label="Evidence view" value={evidenceTab} onChange={event => setEvidenceTab(event.target.value)}>{["breakdown", "transcript", "frames"].map(value => <option key={value} value={value}>{value.charAt(0).toUpperCase()+value.slice(1)}</option>)}</NativeSelect></div>}
-            <TabsContent value={tab} className="report-prose" tabIndex={0}>
-              {section === "overview" ? (
-                <>
-                  <p className="report-summary">
-                    {a.editorial?.verdict || a.summary}
-                  </p>
-                  {proof(a.editorial?.evidenceIds || a.support?.summary)}
-                  {a.editorial ? (
-                    <ReportSection title="What I would change">
-                      <p className="section-note">
-                        Editorial suggestions, in priority order.
-                      </p>
-                      {a.editorial.changes.map((change, i) => (
-                        <div className="editorial-change" key={i}>
-                          <span className="edit-number">{i + 1}</span>
-                          <div>
-                            <h4>{change.action}</h4>
-                            <p>{change.reason}</p>
-                            <blockquote>
-                              <span>Try this</span>
-                              {change.example}
-                            </blockquote>
-                            {proof(change.evidenceIds)}
+            <UsageReceipt usage={reel.analysisUsage} />
+            {transcriptChangedSinceReport(reel) &&
+              !(tab === "evidence" && evidenceTab === "transcript") && (
+                <Notice>
+                  Transcript wording changed after this report. Its findings and
+                  citations still use the saved version.{" "}
+                  <Button
+                    variant="link"
+                    className="text-link"
+                    onClick={() => {
+                      setTab("evidence");
+                      setEvidenceTab("transcript");
+                    }}
+                  >
+                    Review transcript
+                  </Button>
+                </Notice>
+              )}
+            <Tabs value={tab} onValueChange={setTab} className="report-tabs">
+              {a.version !== 2 && (
+                <Notice>
+                  This saved report uses the earlier format. Analyze again to
+                  add evidence links, critical findings and shot lists.
+                </Notice>
+              )}
+              <div className="report-tools">
+                <TabsList
+                  className="report-tab-list"
+                  aria-label="Report sections"
+                >
+                  {reportTabs.map((value) => (
+                    <TabsTrigger value={value} key={value}>
+                      {value.charAt(0).toUpperCase() + value.slice(1)}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+              {tab === "evidence" && (
+                <div className="source-tabs">
+                  <NativeSelect
+                    aria-label="Evidence view"
+                    value={evidenceTab}
+                    onChange={(event) => setEvidenceTab(event.target.value)}
+                  >
+                    {["breakdown", "transcript", "frames"].map((value) => (
+                      <option key={value} value={value}>
+                        {value.charAt(0).toUpperCase() + value.slice(1)}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
+              <TabsContent value={tab} className="report-prose" tabIndex={0}>
+                {section === "overview" ? (
+                  <>
+                    <p className="report-summary">
+                      {a.editorial?.verdict || a.summary}
+                    </p>
+                    {proof(a.editorial?.evidenceIds || a.support?.summary)}
+                    {a.editorial ? (
+                      <ReportSection title="What I would change">
+                        <p className="section-note">
+                          Editorial suggestions, in priority order.
+                        </p>
+                        {a.editorial.changes.map((change, i) => (
+                          <div className="editorial-change" key={i}>
+                            <span className="edit-number">{i + 1}</span>
+                            <div>
+                              <h4>{change.action}</h4>
+                              <p>{change.reason}</p>
+                              <blockquote>
+                                <span>Try this</span>
+                                {change.example}
+                              </blockquote>
+                              {proof(change.evidenceIds)}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </ReportSection>
+                    ) : (
+                      <div className="report-takeaways">
+                        {[
+                          a.findings?.find(
+                            (f) =>
+                              f.kind === "distinctive" || f.kind === "strength",
+                          ),
+                          a.findings?.find((f) => f.kind === "weakness"),
+                        ]
+                          .filter((f) => f !== undefined)
+                          .map((finding, i) => (
+                            <section key={i}>
+                              <span className="eyebrow">
+                                {i === 0 ? "What works" : "Worth a second look"}
+                              </span>
+                              <h3>{finding.title}</h3>
+                              <p>{finding.detail}</p>
+                              {proof(finding.evidenceIds)}
+                            </section>
+                          ))}
+                      </div>
+                    )}
+                    <Disclosure
+                      className="story-disclosure"
+                      title={<>Hook, body & ending</>}
+                    >
+                      <StoryStructure
+                        analysis={a}
+                        sources={sources}
+                        proof={proof}
+                        seek={(seconds) => {
+                          const match = sources.find(
+                            (s) => s.seconds === seconds,
+                          );
+                          if (match) selectSource(match);
+                          else seek(seconds);
+                        }}
+                      />
+                    </Disclosure>
+
+                    {!!a.hypotheses.length && (
+                      <ReportSection title="Possible creative mechanisms">
+                        {a.hypotheses.map((h, i) => (
+                          <div className="hypothesis" key={i}>
+                            <div>
+                              <h4>{h.driver}</h4>
+                              <span className="confidence">
+                                {h.confidence} confidence
+                              </span>
+                            </div>
+                            <p>{h.evidence}</p>
+                            {proof(h.evidenceIds)}
+                          </div>
+                        ))}
+                      </ReportSection>
+                    )}
+                    <ReportSection title="Patterns to adapt">
+                      <ul>
+                        {a.transferablePatterns.map((pattern, i) => (
+                          <li key={i}>
+                            {pattern}
+                            {proof(a.support?.patterns[i])}
+                          </li>
+                        ))}
+                      </ul>
                     </ReportSection>
-                  ) : (
-                    <div className="report-takeaways">
-                      {[
-                        a.findings?.find(
-                          (f) =>
-                            f.kind === "distinctive" || f.kind === "strength",
-                        ),
-                        a.findings?.find((f) => f.kind === "weakness"),
-                      ]
-                        .filter((f) => f !== undefined)
-                        .map((finding, i) => (
-                          <section key={i}>
-                            <span className="eyebrow">
-                              {i === 0 ? "What works" : "Worth a second look"}
-                            </span>
-                            <h3>{finding.title}</h3>
+                  </>
+                ) : section === "breakdown" ? (
+                  <>
+                    <EvidenceReview
+                      reel={reel}
+                      review={() => setEvidenceTab("transcript")}
+                    />
+                    {!!a.findings?.length && (
+                      <ReportSection title="What stands out">
+                        {a.findings.map((finding, i) => (
+                          <div className="finding" key={i}>
+                            <Badge variant="secondary" className="tag subtle">
+                              {finding.kind}
+                            </Badge>
+                            <h4>{finding.title}</h4>
                             <p>{finding.detail}</p>
                             {proof(finding.evidenceIds)}
-                          </section>
-                        ))}
-                    </div>
-                  )}
-                  <Disclosure
-                    className="story-disclosure"
-                    title={<>Hook, body & ending</>}
-                  >
-                    <StoryStructure
-                      analysis={a}
-                      sources={sources}
-                      proof={proof}
-                      seek={(seconds) => {
-                        const match = sources.find(
-                          (s) => s.seconds === seconds,
-                        );
-                        if (match) selectSource(match);
-                        else seek(seconds);
-                      }}
-                    />
-                  </Disclosure>
-
-                  {!!a.hypotheses.length && (
-                    <ReportSection title="Possible creative mechanisms">
-                      {a.hypotheses.map((h, i) => (
-                        <div className="hypothesis" key={i}>
-                          <div>
-                            <h4>{h.driver}</h4>
-                            <span className="confidence">
-                              {h.confidence} confidence
-                            </span>
                           </div>
-                          <p>{h.evidence}</p>
-                          {proof(h.evidenceIds)}
-                        </div>
-                      ))}
+                        ))}
+                      </ReportSection>
+                    )}
+                    <ReportSection title="Story beats">
+                      <div className="beats">
+                        {a.beats.map((b, i) => (
+                          <div className="beat" key={i}>
+                            <Button
+                              variant="ghost"
+                              className="timestamp"
+                              onClick={() => seek(b.startSeconds)}
+                            >
+                              {clock(b.startSeconds)}
+                            </Button>
+                            <div>
+                              <h4>{b.whatHappens}</h4>
+                              <p>{b.purpose}</p>
+                              {proof(b.evidenceIds)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </ReportSection>
-                  )}
-                  <ReportSection title="Patterns to adapt">
-                    <ul>
-                      {a.transferablePatterns.map((pattern, i) => (
-                        <li key={i}>
-                          {pattern}
-                          {proof(a.support?.patterns[i])}
-                        </li>
-                      ))}
-                    </ul>
-                  </ReportSection>
-                </>
-              ) : section === "breakdown" ? (
-                <>
-                  {!!a.findings?.length && (
-                    <ReportSection title="What stands out">
-                      {a.findings.map((finding, i) => (
-                        <div className="finding" key={i}>
-                          <Badge variant="secondary" className="tag subtle">
-                            {finding.kind}
-                          </Badge>
-                          <h4>{finding.title}</h4>
-                          <p>{finding.detail}</p>
-                          {proof(finding.evidenceIds)}
-                        </div>
-                      ))}
-                    </ReportSection>
-                  )}
-                  <ReportSection title="Story beats">
-                    <div className="beats">
-                      {a.beats.map((b, i) => (
-                        <div className="beat" key={i}>
+                    <ReportSection title="Observed moments">
+                      {a.observations.map((o, i) => (
+                        <div className="observation" key={i}>
                           <Button
                             variant="ghost"
                             className="timestamp"
-                            onClick={() => seek(b.startSeconds)}
+                            onClick={() => seek(o.timestampSeconds)}
                           >
-                            {clock(b.startSeconds)}
+                            {clock(o.timestampSeconds)}
                           </Button>
                           <div>
-                            <h4>{b.whatHappens}</h4>
-                            <p>{b.purpose}</p>
-                            {proof(b.evidenceIds)}
+                            <Badge variant="secondary" className="tag subtle">
+                              {o.category}
+                            </Badge>
+                            <p>{o.detail}</p>
+                            {proof(o.evidenceIds)}
                           </div>
                         </div>
                       ))}
-                    </div>
-                  </ReportSection>
-                  <ReportSection title="Observed moments">
-                    {a.observations.map((o, i) => (
-                      <div className="observation" key={i}>
+                    </ReportSection>
+                    <ReportSection title="Pacing, payoff and CTA">
+                      <h4>Pacing</h4>
+                      <p>{a.pacing}</p>
+                      {proof(a.support?.pacing)}
+                      <h4>Payoff</h4>
+                      <p>{a.payoff}</p>
+                      {proof(a.support?.payoff)}
+                      <h4>Call to action</h4>
+                      <p>{a.cta}</p>
+                      {proof(a.support?.cta)}
+                    </ReportSection>
+                  </>
+                ) : section === "ideas" ? (
+                  <>
+                    <p className="section-note">
+                      Concepts to test, inspired by the creative mechanism.
+                      Suggested scenes are new production directions.
+                    </p>
+                    {a.suggestedAngles.map((idea, i) => (
+                      <Concept
+                        key={i}
+                        idea={idea}
+                        index={i}
+                        citations={proof(idea.evidenceIds)}
+                        refine={refineIdea ? () => refineIdea(i) : undefined}
+                        save={saveIdea ? () => saveIdea(i) : undefined}
+                      />
+                    ))}
+                  </>
+                ) : section === "transcript" ? (
+                  <TranscriptWorkbench
+                    key={reel.id}
+                    reel={reel}
+                    busy={busy || Boolean(job)}
+                    refreshed={refreshed}
+                    seek={seek}
+                    videoRef={videoRef}
+                    analyze={() => analyze(true)}
+                  />
+                ) : (
+                  <div className="frames">
+                    <p className="section-note">
+                      Sampled frames. Click to seek to the exact moment.
+                    </p>
+                    <div className="frame-grid">
+                      {reel.evidence?.frames.map((frame, i) => (
                         <Button
                           variant="ghost"
-                          className="timestamp"
-                          onClick={() => seek(o.timestampSeconds)}
+                          key={frame.file}
+                          onClick={() => {
+                            const item = sources.find(
+                              (s) => s.id === `F${i + 1}`,
+                            );
+                            if (item) selectSource(item);
+                            else seek(frame.seconds);
+                          }}
                         >
-                          {clock(o.timestampSeconds)}
+                          <img
+                            src={asset(reel.id, frame.file)}
+                            alt={`Video at ${frame.seconds.toFixed(1)} seconds`}
+                            loading="lazy"
+                          />
+                          <span>{frame.seconds.toFixed(1)}s</span>
                         </Button>
-                        <div>
-                          <Badge variant="secondary" className="tag subtle">
-                            {o.category}
-                          </Badge>
-                          <p>{o.detail}</p>
-                          {proof(o.evidenceIds)}
-                        </div>
-                      </div>
-                    ))}
-                  </ReportSection>
-                  <ReportSection title="Pacing, payoff and CTA">
-                    <h4>Pacing</h4>
-                    <p>{a.pacing}</p>
-                    {proof(a.support?.pacing)}
-                    <h4>Payoff</h4>
-                    <p>{a.payoff}</p>
-                    {proof(a.support?.payoff)}
-                    <h4>Call to action</h4>
-                    <p>{a.cta}</p>
-                    {proof(a.support?.cta)}
-                  </ReportSection>
-                </>
-              ) : section === "ideas" ? (
-                <>
-                  <p className="section-note">
-                    Concepts to test, inspired by the creative mechanism.
-                    Suggested scenes are new production directions.
-                  </p>
-                  {a.suggestedAngles.map((idea, i) => (
-                    <Concept
-                      key={i}
-                      idea={idea}
-                      index={i}
-                      citations={proof(idea.evidenceIds)}
-                      refine={refineIdea ? () => refineIdea(i) : undefined}
-                      save={saveIdea ? () => saveIdea(i) : undefined}
-                    />
-                  ))}
-                </>
-              ) : section === "transcript" ? (
-                <div className="transcript">
-                  <Notice>
-                    {reel.evidence?.transcript.note ||
-                      "Transcript unavailable."}
-                  </Notice>
-                  <p className="detail-caveat">
-                    {reel.evidence?.transcript.engine} ·{" "}
-                    {reel.evidence?.transcript.model} ·{" "}
-                    {reel.evidence?.transcript.language ||
-                      "No language detected"}
-                  </p>
-                  {reel.evidence?.transcript.segments.length ? (
-                    reel.evidence.transcript.segments.map((segment, i) => (
-                      <Button
-                        variant="ghost"
-                        key={i}
-                        onClick={() => {
-                          const item = sources.find(
-                            (s) => s.id === `T${i + 1}`,
-                          );
-                          if (item) selectSource(item);
-                          else seek(segment.start);
-                        }}
-                      >
-                        <span className="timestamp">
-                          {clock(segment.start)}
-                        </span>
-                        <span>{segment.text}</span>
-                      </Button>
-                    ))
-                  ) : (
-                    <p>No transcribed speech is available.</p>
-                  )}
-                </div>
-              ) : (
-                <div className="frames">
-                  <p className="section-note">
-                    Sampled frames. Click to seek to the exact moment.
-                  </p>
-                  <div className="frame-grid">
-                    {reel.evidence?.frames.map((frame, i) => (
-                      <Button
-                        variant="ghost"
-                        key={frame.file}
-                        onClick={() => {
-                          const item = sources.find(
-                            (s) => s.id === `F${i + 1}`,
-                          );
-                          if (item) selectSource(item);
-                          else seek(frame.seconds);
-                        }}
-                      >
-                        <img
-                          src={asset(reel.id, frame.file)}
-                          alt={`Video at ${frame.seconds.toFixed(1)} seconds`}
-                          loading="lazy"
-                        />
-                        <span>{frame.seconds.toFixed(1)}s</span>
-                      </Button>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              <Disclosure
-                className="limitations"
-                title={<>Limits and uncertainty</>}
-              >
-                <ul>
-                  {[...a.limitations, ...(reel.evidence?.warnings || [])].map(
-                    (limit, i) => (
-                      <li key={i}>{limit}</li>
-                    ),
-                  )}
-                </ul>
-              </Disclosure>
-              <Disclosure
-                className="report-metadata"
-                title={<>Report details & exports</>}
-              >
-                <DownloadLinks id={reel.id} />
-                <Button
-                  variant="outline"
-                  className="btn small"
-                  disabled={busy}
-                  onClick={() => analyze(true)}
+                )}
+                <Disclosure
+                  className="limitations"
+                  title={<>Limits and uncertainty</>}
                 >
-                  <RefreshCw size={14} />
-                  Analyze again
-                </Button>
-              </Disclosure>
-            </TabsContent>
-          </Tabs>
+                  <ul>
+                    {[...a.limitations, ...(reel.evidence?.warnings || [])].map(
+                      (limit, i) => (
+                        <li key={i}>{limit}</li>
+                      ),
+                    )}
+                  </ul>
+                </Disclosure>
+                <Disclosure
+                  className="report-metadata"
+                  title={<>Report details & exports</>}
+                >
+                  <DownloadLinks id={reel.id} />
+                  <Button
+                    variant="outline"
+                    className="btn small"
+                    disabled={busy}
+                    onClick={() => analyze(true)}
+                  >
+                    <RefreshCw size={14} />
+                    Analyze again
+                  </Button>
+                </Disclosure>
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </div>
