@@ -8,6 +8,7 @@ import { UploadForm } from "@/components/replay/library/upload-form";
 import { Concept } from "@/components/replay/reports/concept-card";
 import { EvidenceLinks } from "@/components/replay/reports/evidence-links";
 import { ReportSection } from "@/components/replay/reports/report-section";
+import { ReportOverview } from "./report-overview";
 import { StoryStructure } from "@/components/replay/reports/story-structure";
 import { EvidenceReview } from "@/components/replay/reports/evidence/evidence-review";
 import { DownloadLinks } from "@/components/replay/shared/download-links";
@@ -33,7 +34,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-const reportTabs = ["overview", "ideas", "evidence"];
+const reportTabs = ["overview", "transcript", "ideas", "evidence"];
 const TranscriptWorkbench = dynamic(
   () =>
     import("./evidence/transcript-workbench").then(
@@ -63,6 +64,7 @@ export function ReelDetail({
   initialSource,
   refineIdea,
   saveIdea,
+  transcriptionJob,
 }: {
   reel: Reel;
   busy: boolean;
@@ -72,6 +74,7 @@ export function ReelDetail({
   initialSource?: string | null;
   refineIdea?: (index: number) => void;
   saveIdea?: (index: number) => Promise<boolean>;
+  transcriptionJob?: Job;
 }) {
   const [evidenceTab, setEvidenceTab] = useState("breakdown");
   const [tab, setTab] = useState("overview"),
@@ -87,6 +90,7 @@ export function ReelDetail({
       mobileSnapshot,
       serverMobileSnapshot,
     );
+  const playbackEnd = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null),
     playerRef = useRef<HTMLDivElement>(null);
   const a = reel.analysis,
@@ -118,7 +122,8 @@ export function ReelDetail({
       }
     };
   }, [initialSeconds, hasVideo, videoSrc]);
-  function seek(seconds: number) {
+  function seek(seconds: number, endSeconds?: number) {
+    playbackEnd.current = endSeconds ?? null;
     setMediaOpen(true);
     const video = videoRef.current;
     if (video) {
@@ -179,6 +184,15 @@ export function ReelDetail({
               src={videoSrc}
               ref={videoRef}
               onError={() => setPlayerError(true)}
+              onTimeUpdate={(event) => {
+                if (
+                  playbackEnd.current !== null &&
+                  event.currentTarget.currentTime >= playbackEnd.current
+                ) {
+                  event.currentTarget.pause();
+                  playbackEnd.current = null;
+                }
+              }}
             />
           ) : reel.thumbnail ? (
             <img src={image(reel.thumbnail)} alt="Reel preview" />
@@ -369,27 +383,38 @@ export function ReelDetail({
                   ? "Processing…"
                   : "Analyze this Reel"}
             </Button>
+            {reel.evidence && (
+              <Disclosure title={<>Review transcript before retrying</>}>
+                <TranscriptWorkbench
+                  reel={reel}
+                  busy={busy || Boolean(job)}
+                  refreshed={refreshed}
+                  seek={seek}
+                  videoRef={videoRef}
+                  analyze={() => analyze(true)}
+                  transcriptionJob={transcriptionJob}
+                />
+              </Disclosure>
+            )}
           </div>
         ) : (
           <>
             <UsageReceipt usage={reel.analysisUsage} />
-            {transcriptChangedSinceReport(reel) &&
-              !(tab === "evidence" && evidenceTab === "transcript") && (
-                <Notice>
-                  Transcript wording changed after this report. Its findings and
-                  citations still use the saved version.{" "}
-                  <Button
-                    variant="link"
-                    className="text-link"
-                    onClick={() => {
-                      setTab("evidence");
-                      setEvidenceTab("transcript");
-                    }}
-                  >
-                    Review transcript
-                  </Button>
-                </Notice>
-              )}
+            {transcriptChangedSinceReport(reel) && tab !== "transcript" && (
+              <Notice>
+                The transcript changed after this report. Its findings and
+                citations still use the saved version.{" "}
+                <Button
+                  variant="link"
+                  className="text-link"
+                  onClick={() => {
+                    setTab("transcript");
+                  }}
+                >
+                  Review transcript
+                </Button>
+              </Notice>
+            )}
             <Tabs value={tab} onValueChange={setTab} className="report-tabs">
               {a.version !== 2 && (
                 <Notice>
@@ -416,7 +441,7 @@ export function ReelDetail({
                     value={evidenceTab}
                     onChange={(event) => setEvidenceTab(event.target.value)}
                   >
-                    {["breakdown", "transcript", "frames"].map((value) => (
+                    {["breakdown", "frames"].map((value) => (
                       <option key={value} value={value}>
                         {value.charAt(0).toUpperCase() + value.slice(1)}
                       </option>
@@ -427,52 +452,11 @@ export function ReelDetail({
               <TabsContent value={tab} className="report-prose" tabIndex={0}>
                 {section === "overview" ? (
                   <>
-                    <p className="report-summary">
-                      {a.editorial?.verdict || a.summary}
-                    </p>
-                    {proof(a.editorial?.evidenceIds || a.support?.summary)}
-                    {a.editorial ? (
-                      <ReportSection title="What I would change">
-                        <p className="section-note">
-                          Editorial suggestions, in priority order.
-                        </p>
-                        {a.editorial.changes.map((change, i) => (
-                          <div className="editorial-change" key={i}>
-                            <span className="edit-number">{i + 1}</span>
-                            <div>
-                              <h4>{change.action}</h4>
-                              <p>{change.reason}</p>
-                              <blockquote>
-                                <span>Try this</span>
-                                {change.example}
-                              </blockquote>
-                              {proof(change.evidenceIds)}
-                            </div>
-                          </div>
-                        ))}
-                      </ReportSection>
-                    ) : (
-                      <div className="report-takeaways">
-                        {[
-                          a.findings?.find(
-                            (f) =>
-                              f.kind === "distinctive" || f.kind === "strength",
-                          ),
-                          a.findings?.find((f) => f.kind === "weakness"),
-                        ]
-                          .filter((f) => f !== undefined)
-                          .map((finding, i) => (
-                            <section key={i}>
-                              <span className="eyebrow">
-                                {i === 0 ? "What works" : "Worth a second look"}
-                              </span>
-                              <h3>{finding.title}</h3>
-                              <p>{finding.detail}</p>
-                              {proof(finding.evidenceIds)}
-                            </section>
-                          ))}
-                      </div>
-                    )}
+                    <ReportOverview
+                      analysis={a}
+                      proof={proof}
+                      ideas={() => setTab("ideas")}
+                    />
                     <Disclosure
                       className="story-disclosure"
                       title={<>Hook, body & ending</>}
@@ -490,39 +474,12 @@ export function ReelDetail({
                         }}
                       />
                     </Disclosure>
-
-                    {!!a.hypotheses.length && (
-                      <ReportSection title="Possible creative mechanisms">
-                        {a.hypotheses.map((h, i) => (
-                          <div className="hypothesis" key={i}>
-                            <div>
-                              <h4>{h.driver}</h4>
-                              <span className="confidence">
-                                {h.confidence} confidence
-                              </span>
-                            </div>
-                            <p>{h.evidence}</p>
-                            {proof(h.evidenceIds)}
-                          </div>
-                        ))}
-                      </ReportSection>
-                    )}
-                    <ReportSection title="Patterns to adapt">
-                      <ul>
-                        {a.transferablePatterns.map((pattern, i) => (
-                          <li key={i}>
-                            {pattern}
-                            {proof(a.support?.patterns[i])}
-                          </li>
-                        ))}
-                      </ul>
-                    </ReportSection>
                   </>
                 ) : section === "breakdown" ? (
                   <>
                     <EvidenceReview
                       reel={reel}
-                      review={() => setEvidenceTab("transcript")}
+                      review={() => setTab("transcript")}
                     />
                     {!!a.findings?.length && (
                       <ReportSection title="What stands out">
@@ -578,6 +535,32 @@ export function ReelDetail({
                         </div>
                       ))}
                     </ReportSection>
+                    {!!a.hypotheses.length && (
+                      <ReportSection title="Possible creative mechanisms">
+                        {a.hypotheses.map((h, i) => (
+                          <div className="hypothesis" key={i}>
+                            <div>
+                              <h4>{h.driver}</h4>
+                              <span className="confidence">
+                                {h.confidence} confidence
+                              </span>
+                            </div>
+                            <p>{h.evidence}</p>
+                            {proof(h.evidenceIds)}
+                          </div>
+                        ))}
+                      </ReportSection>
+                    )}
+                    <ReportSection title="Patterns to adapt">
+                      <ul>
+                        {a.transferablePatterns.map((pattern, i) => (
+                          <li key={i}>
+                            {pattern}
+                            {proof(a.support?.patterns[i])}
+                          </li>
+                        ))}
+                      </ul>
+                    </ReportSection>
                     <ReportSection title="Pacing, payoff and CTA">
                       <h4>Pacing</h4>
                       <p>{a.pacing}</p>
@@ -616,6 +599,7 @@ export function ReelDetail({
                     seek={seek}
                     videoRef={videoRef}
                     analyze={() => analyze(true)}
+                    transcriptionJob={transcriptionJob}
                   />
                 ) : (
                   <div className="frames">

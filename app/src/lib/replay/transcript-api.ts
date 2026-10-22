@@ -3,8 +3,18 @@ import { z } from "zod";
 import { assertMediaAvailable } from "./media-lock";
 import { getJobs, getReel, saveReel } from "./store";
 import { transcriptContentVersion, transcriptEditVersion } from "./transcript";
+import { applicableReview } from "./transcript";
+import { transcriptionOptions } from "./transcription";
+import { enqueue } from "./jobs";
 
 export const transcriptActions = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("transcript-retry"),
+    reelId: z.string().min(1).max(100),
+    expectedRevision: z.string().min(1).max(1000),
+    options: transcriptionOptions,
+    replaceCorrections: z.boolean().default(false),
+  }),
   z.object({
     action: z.literal("transcript-save"),
     reelId: z.string().min(1).max(100),
@@ -23,7 +33,7 @@ export function handleTranscript(
 ): Response {
   assertMediaAvailable([input.reelId]);
   const reel = getReel(input.reelId);
-  if (!reel?.evidence || reel.evidence.transcript.status !== "completed") {
+  if (!reel?.evidence || (input.action !== "transcript-retry" && reel.evidence.transcript.status !== "completed")) {
     throw new Error("This video has no editable transcript. Analyze it first.");
   }
   if (
@@ -41,6 +51,11 @@ export function handleTranscript(
     throw new Error(
       "The transcript or video changed in another view. Your edits were not saved. Reload the transcript before trying again.",
     );
+  }
+  if (input.action === "transcript-retry") {
+    if (!reel.evidence.hasAudio) throw new Error("This video has no audio track to transcribe.");
+    if (applicableReview(reel) && !input.replaceCorrections) throw new Error("Transcribing again replaces your wording corrections. Export them first, then confirm replacement.");
+    return Response.json(enqueue("transcribe", reel.accountId, [reel.id], { transcription: { ...input.options, expectedRevision: input.expectedRevision } }), { status: 202 });
   }
   if (input.action === "transcript-reset") {
     saveReel({ ...reel, transcriptReview: undefined });

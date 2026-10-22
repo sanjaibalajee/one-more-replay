@@ -29,6 +29,7 @@ export function elapsedSince(at: string | undefined, now: number) {
 }
 
 export function retryAdvice(job: Job): string {
+  if (job.kind === "transcribe") return "Your previous transcript was kept. Open the video’s Transcript tab to choose a language or model and try again.";
   if (job.kind === "resolve")
     return "Retry fetching public details, or open the saved video and upload its file. No Apify token is needed.";
   const message = job.errors.join(" ").toLowerCase();

@@ -10,6 +10,8 @@ export function reelMarkdown(reel: Reel): string {
   const cite = (ids?: string[]) => ids?.length ? `Evidence: ${ids.map(id => { const source = sources.find(s => s.id === id); return source ? `${id}${source.seconds !== null ? ` [${time(source.seconds)}]` : ""}: ${source.text}` : id; }).join("; ")}` : "";
   return [`# ${a.title}`, a.summary, `Source: ${reel.url || "Local upload"}`, `Analyzed: ${reel.analyzedAt} · ${reel.analysisProvider}`,
     ...(a.editorial ? ["## Editorial verdict", a.editorial.verdict, cite(a.editorial.evidenceIds), "## Recommended edits", ...a.editorial.changes.map((change,i) => `### ${i+1}. ${change.action}\n${change.reason}\n\nProposed edit: ${change.example}\n\n${cite(change.evidenceIds)}`)] : []),
+    ...(a.editorial?.keep ? ["## Keep this", a.editorial.keep.detail, cite(a.editorial.keep.evidenceIds)] : []),
+    ...(a.editorial?.nextTest ? ["## One test to try", a.editorial.nextTest.change, `Keep constant: ${a.editorial.nextTest.keepConstant}`, `Measure: ${a.editorial.nextTest.measure}`, cite(a.editorial.nextTest.evidenceIds)] : []),
     ...(a.findings?.length ? ["## Distinctive details and critical findings", ...a.findings.map(f => `### ${f.title} (${f.kind})\n${f.detail}\n\n${cite(f.evidenceIds)}`)] : []),
     "## Opening hook", `**${a.hook.label}**`, `Spoken: ${a.hook.spokenHook}`, `Visual: ${a.hook.visualHook}`, a.hook.explanation, cite(a.hook.evidenceIds),
     "## Story beats", ...a.beats.map(b => `- ${time(b.startSeconds)}–${time(b.endSeconds)}: ${b.whatHappens} — ${b.purpose}`),

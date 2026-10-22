@@ -19,7 +19,7 @@ Open http://127.0.0.1:3210. Configure connections and the creative brief in the 
 
 - Instagram catalogues and individual Instagram, TikTok or YouTube links; explicit selection for AI work.
 - FFmpeg frame sampling, local Whisper transcription, timestamped evidence and Markdown/JSON exports.
-- Searchable transcript review, wording corrections and SRT export; reports preserve their original evidence until explicit reanalysis.
+- Word-timed transcripts, local language/model retries, wording corrections and SRT export; reports retain their evidence until explicit reanalysis.
 - Account-relative baselines, saved collections, descriptive analytics and creative-gap comparisons.
 - Own idea capture, draft stages, speaking-length estimates, read-through and script exports. Optional idea chat and explicit saving to Inspiration.
 - Provider-reported tokens and LiteLLM USD estimates by model. Codex model/effort are resolved through the official CLI and pinned per job. API equivalents are reference estimates, not subscription charges; missing usage stays unavailable.

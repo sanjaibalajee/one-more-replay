@@ -18,12 +18,15 @@ def main():
     os.environ.setdefault("XDG_CACHE_HOME", str(root / ".local/cache"))
     from faster_whisper import WhisperModel
     model = WhisperModel(args.model, device="cpu", compute_type="int8", download_root=str(root / ".local/cache/whisper"))
-    segments, info = model.transcribe(args.audio, language=args.language or None, beam_size=5, vad_filter=True, condition_on_previous_text=False)
+    segments, info = model.transcribe(args.audio, language=args.language or None, beam_size=5, vad_filter=True, condition_on_previous_text=False, word_timestamps=True)
     rows = []
     for segment in segments:
         if not segment.text.strip():
             continue
         row = {"start": round(segment.start, 3), "end": round(segment.end, 3), "text": segment.text.strip()}
+        row["words"] = [{"start": round(w.start, 3), "end": round(w.end, 3), "text": w.word,
+                         "probability": round(w.probability, 4)} for w in (segment.words or [])
+                        if w.word.strip() and all(math.isfinite(v) for v in [w.start, w.end, w.probability])]
         for source, target in [("avg_logprob", "avgLogProb"), ("no_speech_prob", "noSpeechProb"), ("compression_ratio", "compressionRatio")]:
             value = getattr(segment, source, None)
             if isinstance(value, (int, float)) and math.isfinite(value):
@@ -32,7 +35,7 @@ def main():
     print(json.dumps({"text": " ".join(s["text"] for s in rows), "language": info.language,
         "languageProbability": round(info.language_probability, 4),
         "segments": rows, "engine": "faster-whisper", "model": args.model, "status": "completed",
-        "note": "Speech recognition can miss words, names, code-switching, and music. Check important quotes against the video."}))
+        "note": "Word timing is estimated. Check names, mixed-language speech and important quotes against the video."}))
 
 
 if __name__ == "__main__":

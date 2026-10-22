@@ -243,7 +243,8 @@ export function Workspace() {
       setSelected(new Set());
   }
   async function retry(job: Job) {
-    if (job.kind === "refine")
+    if (job.kind === "transcribe") showReel(job.reelIds[0]);
+    else if (job.kind === "refine")
       await act({
         action: "idea-message",
         id: job.params.ideaSessionId,
@@ -674,6 +675,7 @@ export function Workspace() {
             )}
             {currentReel ? (
               <ReelDetail
+                transcriptionJob={data?.jobs.find(j => j.kind === "transcribe" && j.reelIds.includes(currentReel.id))}
                 initialSource={initialSource}
                 key={`${currentReel.id}:${initialSource || ""}`}
                 reel={currentReel}

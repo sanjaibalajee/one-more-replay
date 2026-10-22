@@ -4,6 +4,8 @@ export const formatSchema = z.enum(["talking-head", "demonstration", "tutorial",
 const refs = z.array(z.string()).min(1).max(8);
 const optionalRefs = z.array(z.string()).optional();
 const editorialSchema = z.object({
+  keep: z.object({ detail: z.string().trim().min(1).max(400), evidenceIds: refs }).optional(),
+  nextTest: z.object({ change: z.string().trim().min(1).max(400), keepConstant: z.string().trim().min(1).max(300), measure: z.string().trim().min(1).max(400), evidenceIds: refs }).optional(),
   verdict: z.string().trim().min(1).max(500).describe("A direct editorial judgement about the creative, with no claim about measured retention or causality."),
   evidenceIds: refs,
   changes: z.array(z.object({
@@ -38,7 +40,7 @@ export const storedAnalysisSchema = z.object({
   support: z.object({ summary: refs, pacing: refs, payoff: refs, cta: refs, patterns: z.array(refs) }).optional(),
 });
 export const analysisSchema = storedAnalysisSchema.extend({
-  editorial: editorialSchema,
+  editorial: editorialSchema.extend({ keep: editorialSchema.shape.keep.unwrap(), nextTest: editorialSchema.shape.nextTest.unwrap() }),
   version: z.literal(2), format: formatSchema,
   classification: storedAnalysisSchema.shape.classification.unwrap(), storyStructure: storyStructureSchema,
   hook: storedAnalysisSchema.shape.hook.extend({ evidenceIds: refs }),
@@ -67,11 +69,12 @@ export interface Account {
   collectionNote: string; reelCount?: number; profileImageUrl?: string; profileCheckedAt?: string; profileError?: string | null;
   role?: "own" | "competitor" | "inspiration"; kind?: "creator" | "inbox"; platform?: import("./research-types").Platform;
 }
-export interface TranscriptSegment { start: number; end: number; text: string; avgLogProb?: number; noSpeechProb?: number; compressionRatio?: number; reviewed?: boolean }
+export interface TranscriptWord { start: number; end: number; text: string; probability?: number }
+export interface TranscriptSegment { words?: TranscriptWord[]; start: number; end: number; text: string; avgLogProb?: number; noSpeechProb?: number; compressionRatio?: number; reviewed?: boolean }
 export interface Transcript { text: string; language: string | null; languageProbability?: number; segments: TranscriptSegment[]; engine: string; model: string; status: "completed" | "no-audio" | "unavailable"; note: string; reviewed?: boolean }
 export interface TranscriptReview { revision: string; sourceRevision: string; mediaRevision: string; updatedAt: string; corrections: { index: number; text: string }[] }
 export interface Frame { file: string; seconds: number }
-export interface MediaEvidence { samplingVersion?: number; duration: number; width: number; height: number; hasAudio: boolean; frames: Frame[]; sceneChanges: number[]; transcript: Transcript; warnings: string[] }
+export interface MediaEvidence { transcriptionSettings?: { model: string; language: string }; samplingVersion?: number; duration: number; width: number; height: number; hasAudio: boolean; frames: Frame[]; sceneChanges: number[]; transcript: Transcript; warnings: string[] }
 export interface Performance {
   medianViews: number | null; multiple: number | null; sampleSize: number; note: string;
   ageDays?: number | null; durationSeconds?: number | null; cohort?: "similar" | "account" | "insufficient";
@@ -90,7 +93,7 @@ export interface Reel {
   transcriptReview?: TranscriptReview;
 }
 export interface Job {
-  id: string; kind: "collect" | "analyze" | "compare" | "resolve" | "adapt" | "gap" | "refine"; accountId: string | null;
+  id: string; kind: "collect" | "analyze" | "compare" | "resolve" | "adapt" | "gap" | "refine" | "transcribe"; accountId: string | null;
   reelIds: string[]; phase: Phase; detail: string; completed: number; total: number;
   errors: string[]; createdAt: string; updatedAt: string; resultId: string | null;
   currentReelId?: string | null; phaseStartedAt?: string;
@@ -98,7 +101,7 @@ export interface Job {
   runSettings?: Settings;
   usage?: import("./usage-types").ModelUsage[];
   execution?: import("./usage-types").ModelExecution;
-  params: { limit?: number; brandContext?: string; force?: boolean; topic?: string; ownIds?: string[]; ideaSessionId?: string; messageId?: string; message?: string };
+  params: { transcription?: { model: string; language: string; expectedRevision: string }; limit?: number; brandContext?: string; force?: boolean; topic?: string; ownIds?: string[]; ideaSessionId?: string; messageId?: string; message?: string };
 }
 export interface ComparisonContext {
   quality: "moderate" | "weak"; reasons: string[];

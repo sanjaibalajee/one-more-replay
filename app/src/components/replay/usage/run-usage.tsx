@@ -3,7 +3,7 @@ import { dollars, tokens } from "./format";
 import type { Job } from "@/lib/replay/types";
 
 export function RunUsage({ job }: { job: Job }) {
-  if (!job.runSettings || ["collect", "resolve"].includes(job.kind)) return null;
+  if (!job.runSettings || ["collect", "resolve", "transcribe"].includes(job.kind)) return null;
   const { execution, runSettings: settings } = job;
   const codex = settings.provider === "codex";
   const model = execution?.model || (codex ? settings.codexModel : settings.openaiModel);

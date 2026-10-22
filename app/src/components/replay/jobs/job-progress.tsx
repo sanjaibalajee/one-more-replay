@@ -95,6 +95,7 @@ export function JobProgress({ job }: { job: Job }) {
       )}
       <p className="job-detail">{job.detail}</p>
       <RunUsage job={job} />
+      {job.kind === "transcribe" && <p className="stage-help">Speech recognition runs on this computer. No Codex allowance or API charge. The saved report stays available.</p>}
       {job.kind === "collect" && (
         <p className="stage-help">
           Requesting up to {job.params.limit || 50} public Reels. Apify may

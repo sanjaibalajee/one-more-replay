@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile, rename, unlink, stat } from "node:fs/promises";
 import path from "node:path";
-import { z } from "zod";
 import { safeCdnUrl } from "./catalogue";
 import { parseVideoLink } from "./links";
-import { mediaDir, PYTHON, ROOT } from "./paths";
+import { mediaDir, PYTHON } from "./paths";
 import { run } from "./process";
 import type { Frame, MediaEvidence, Reel, Settings, Transcript } from "./types";
+
+import { transcribeVideo } from "./transcription";
 
 export const MAX_VIDEO_BYTES = 150 * 1024 * 1024;
 export async function downloadReel(reel: Reel, signal: AbortSignal): Promise<string> {
@@ -80,13 +81,15 @@ export function frameTimes(duration: number, sceneChanges: number[] = []): numbe
 export function samplingComplete(evidence: MediaEvidence): boolean {
   return evidence.samplingVersion === SAMPLING_VERSION && evidence.frames.length > 0 && evidence.frames.some(frame => frame.seconds >= Math.max(0, evidence.duration - 0.25));
 }
-const transcriptSchema = z.object({ text: z.string(), language: z.string().nullable(), languageProbability: z.number().min(0).max(1).optional(), segments: z.array(z.object({ start: z.number().nonnegative(), end: z.number().nonnegative(), text: z.string(), avgLogProb: z.number().optional(), noSpeechProb: z.number().min(0).max(1).optional(), compressionRatio: z.number().nonnegative().optional() })), engine: z.string(), model: z.string(), status: z.enum(["completed", "no-audio", "unavailable"]), note: z.string() });
 export async function extractEvidence(reel: Reel, settings: Settings, signal: AbortSignal, phase: (name: "extracting" | "transcribing", detail: string) => void): Promise<MediaEvidence> {
   const dir = mediaDir(reel.id), video = path.join(dir, "video.mp4"), manifest = path.join(dir, "evidence.json");
-  let cached: MediaEvidence | undefined;
+  const override = reel.evidence?.transcriptionSettings;
+  let cached: MediaEvidence | undefined = override ? reel.evidence! : undefined;
+  if (override) settings = { ...settings, whisperModel: override.model, language: override.language };
   if (existsSync(manifest)) {
     phase("extracting", "Checking saved frames and transcript.");
     cached = JSON.parse(await readFile(manifest, "utf8")) as MediaEvidence;
+    if (override && reel.evidence) cached = { ...cached, transcript: reel.evidence.transcript, transcriptionSettings: override };
     if ((cached.transcript.status === "no-audio" || (cached.transcript.status === "completed" && cached.transcript.model === settings.whisperModel && (!settings.language || cached.transcript.language === settings.language))) && samplingComplete(cached) && cached.frames.every(f => existsSync(path.join(dir, f.file)))) return cached;
   }
   phase("extracting", "Reading duration and extracting the opening plus frames across the full video.");
@@ -121,17 +124,9 @@ export async function extractEvidence(reel: Reel, settings: Settings, signal: Ab
     transcript = cached.transcript;
   } else if (hasAudio) {
     phase("transcribing", `Transcribing locally with Whisper ${settings.whisperModel}. The model may download on first use.`);
-    const audio = path.join(dir, "audio.wav");
-    await run("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", video, "-vn", "-ar", "16000", "-ac", "1", audio], { signal });
-    try {
-      const result = await run(PYTHON, [path.join(ROOT, "scripts/transcribe.py"), audio, "--model", settings.whisperModel, "--language", settings.language], { signal, timeout: 15 * 60000 });
-      transcript = transcriptSchema.parse(JSON.parse(result.stdout));
-    } catch (err) {
-      if (signal.aborted) throw err;
-      throw new Error(`Whisper couldn't transcribe the audio. Run npm run setup:media from the repo root, then retry. ${err instanceof Error ? err.message : ""}`);
-    }
+    transcript = await transcribeVideo(video, { model: settings.whisperModel, language: settings.language }, duration, signal);
   }
-  const evidence: MediaEvidence = { samplingVersion: SAMPLING_VERSION, duration, width: stream.width || 0, height: stream.height || 0, hasAudio, frames, sceneChanges, transcript, warnings };
+  const evidence: MediaEvidence = { ...(override ? { transcriptionSettings: override } : {}), samplingVersion: SAMPLING_VERSION, duration, width: stream.width || 0, height: stream.height || 0, hasAudio, frames, sceneChanges, transcript, warnings };
   await writeFile(manifest, JSON.stringify(evidence, null, 2), { mode: 0o600 });
   return evidence;
 }

@@ -1,3 +1,4 @@
+import { subtitleCues } from "./transcript-timing";
 import type {
   MediaEvidence,
   Reel,
@@ -13,7 +14,7 @@ export function transcriptContentVersion(transcript: Transcript): string {
     transcript.model,
     transcript.status,
     transcript.text,
-    transcript.segments.map(({ start, end, text }) => [start, end, text]),
+    transcript.segments.map(({ start, end, text, words }) => words?.length ? [start, end, text, words.map(word => [word.start, word.end, word.text])] : [start, end, text]),
   ]);
   let hash = BigInt("14695981039346656037");
   const prime = BigInt("1099511628211");
@@ -46,7 +47,7 @@ export function currentTranscript(
   );
   const segments = evidence.transcript.segments.map((segment, index) =>
     corrections.has(index)
-      ? { ...segment, text: corrections.get(index)!, reviewed: true }
+      ? { ...segment, words: undefined, text: corrections.get(index)!, reviewed: true }
       : segment,
   );
   return {
@@ -125,8 +126,7 @@ export function transcriptSrt(transcript: Transcript): string {
     const total = Math.max(0, Math.round(seconds * 1000));
     return `${String(Math.floor(total / 3600000)).padStart(2, "0")}:${String(Math.floor(total / 60000) % 60).padStart(2, "0")}:${String(Math.floor(total / 1000) % 60).padStart(2, "0")},${String(total % 1000).padStart(3, "0")}`;
   };
-  return transcript.segments
-    .filter((row) => row.text.trim() && row.end > row.start)
+  return subtitleCues(transcript)
     .map(
       (row, index) =>
         `${index + 1}\n${stamp(row.start)} --> ${stamp(row.end)}\n${row.text.replace(/\r?\n/g, " ").replace(/-->/g, "→")}\n`,

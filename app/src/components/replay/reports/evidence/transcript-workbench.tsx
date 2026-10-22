@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Notice } from "@/components/replay/shared/notice";
+import { Disclosure } from "@/components/replay/shared/disclosure";
 import { clock } from "@/components/replay/shared/format";
 import { downloadText } from "@/components/replay/shared/download-text";
 import {
@@ -24,9 +25,12 @@ import {
   transcriptEditVersion,
   transcriptSrt,
 } from "@/lib/replay/transcript";
-import type { Reel } from "@/lib/replay/types";
+import type { Job, Reel } from "@/lib/replay/types";
 import styles from "./evidence.module.css";
 import { saveTranscriptDraft, useTranscriptDraft } from "./transcript-draft";
+
+import { TranscriptionRetry } from "./transcription-retry";
+import { timedWords } from "@/lib/replay/transcript-timing";
 
 const normalize = (text: string) => text.normalize("NFKC").toLocaleLowerCase();
 
@@ -37,15 +41,19 @@ export function TranscriptWorkbench({
   seek,
   videoRef,
   analyze,
+  transcriptionJob,
 }: {
   reel: Reel;
   busy: boolean;
   refreshed: () => Promise<void>;
-  seek: (seconds: number) => void;
+  seek: (seconds: number, endSeconds?: number) => void;
   videoRef: RefObject<HTMLVideoElement | null>;
   analyze: () => void;
+  transcriptionJob?: Job;
 }) {
   const transcript = useMemo(() => currentTranscript(reel), [reel]);
+  const [retry, setRetry] = useState(false);
+  const [playhead, setPlayhead] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const draft = useTranscriptDraft(reel.id);
@@ -63,7 +71,8 @@ export function TranscriptWorkbench({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const update = () =>
+    const update = () => {
+      setPlayhead(video.currentTime);
       setActive(
         transcript?.segments.findIndex(
           (segment) =>
@@ -71,6 +80,7 @@ export function TranscriptWorkbench({
             segment.end > video.currentTime,
         ) ?? -1,
       );
+    };
     update();
     video.addEventListener("timeupdate", update);
     return () => video.removeEventListener("timeupdate", update);
@@ -155,7 +165,7 @@ export function TranscriptWorkbench({
             {reviewed ? " · Corrections saved" : " · Speech recognition"}
           </p>
         </div>
-        {!editing && (
+        {!editing && !retry && (
           <div className={styles.actions}>
             <Button
               ref={editButton}
@@ -178,6 +188,15 @@ export function TranscriptWorkbench({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={busy || !reel.evidence?.hasAudio}
+                  onSelect={() => {
+                    videoRef.current?.pause();
+                    setRetry(true);
+                  }}
+                >
+                  Transcribe again…
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={!transcript.segments.length}
                   onSelect={() =>
@@ -211,12 +230,40 @@ export function TranscriptWorkbench({
           </div>
         )}
       </header>
+      {retry && (
+        <TranscriptionRetry
+          reel={reel}
+          busy={busy}
+          refreshed={refreshed}
+          close={() => {
+            setRetry(false);
+            requestAnimationFrame(() => editButton.current?.focus());
+          }}
+        />
+      )}
       <p className={styles.note}>
         {editing
           ? "Correct the wording or clear words that were never spoken. Timing stays fixed."
-          : "Play a timestamp to check the wording."}
+          : "Play a timestamp to hear just that line."}
       </p>
       {error && <Notice danger>{error}</Notice>}
+      {transcriptionJob?.phase === "failed" && (
+        <div>
+          <Notice danger>
+            Local transcription failed. Your previous wording was kept. Check
+            the video file and local Whisper setup, then try again from the
+            transcript menu.
+          </Notice>
+          <Disclosure title={<>Failure details</>}>
+            <p className={styles.note}>{transcriptionJob.detail}</p>
+          </Disclosure>
+        </div>
+      )}
+      {transcriptionJob?.phase === "cancelled" && (
+        <p className={styles.status} role="status">
+          Local transcription cancelled. Your previous wording was kept.
+        </p>
+      )}
       {conflict && (
         <Notice>
           Your saved transcript changed while these edits were open. Export the
@@ -236,9 +283,9 @@ export function TranscriptWorkbench({
           {notice}
         </p>
       )}
-      {!editing && stale && (
+      {!editing && !retry && stale && (
         <div className={styles.nextStep}>
-          <p>The saved report uses earlier wording.</p>
+          <p>The saved report uses an earlier transcript.</p>
           <Button size="sm" disabled={busy} onClick={analyze}>
             {reviewed
               ? "Analyze with corrections"
@@ -279,7 +326,7 @@ export function TranscriptWorkbench({
               variant="ghost"
               className={styles.time}
               aria-label={`Play line ${index + 1} at ${clock(segment.start)}`}
-              onClick={() => seek(segment.start)}
+              onClick={() => seek(segment.start, segment.end)}
             >
               {clock(segment.start)}
             </Button>
@@ -303,7 +350,19 @@ export function TranscriptWorkbench({
                 />
               ) : (
                 <p>
-                  {text || <span className={styles.note}>Cleared by you</span>}
+                  {timedWords(segment)?.map((word, wordIndex) => (
+                    <span
+                      key={wordIndex}
+                      className={
+                        playhead >= word.start && playhead < word.end
+                          ? styles.activeWord
+                          : undefined
+                      }
+                    >
+                      {word.text}
+                    </span>
+                  )) ||
+                    text || <span className={styles.note}>Cleared by you</span>}
                 </p>
               )}
               {!editing &&

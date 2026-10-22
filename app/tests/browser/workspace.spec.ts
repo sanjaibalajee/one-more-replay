@@ -123,7 +123,7 @@ test("evidence links seek the player, ideas show shot lists, closing and reopeni
   await expect(page.locator(".evidence-focus")).toContainText("Frame 2");
   await page.getByRole("tab", { name: "Ideas", exact: true }).click();
   await expect(page.locator(".idea")).toHaveCount(3); await expect(page.locator(".shot")).toHaveCount(9);
-  await page.getByRole("tab", {name:"Evidence",exact:true}).click(); await page.getByLabel("Evidence view", {exact:true}).selectOption("transcript");
+  await page.getByRole("tab", {name:"Transcript",exact:true}).click();
   await page.locator(".transcript>button").click(); await expect(page.locator(".evidence-focus blockquote")).toHaveText("Synthetic words.");
   await page.getByRole("tab", { name: "Overview", exact: true }).click();
   await page.screenshot({ path: path.resolve("../.local/qa/evidence-report-light.png"), fullPage: true });

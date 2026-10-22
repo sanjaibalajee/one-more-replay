@@ -1,4 +1,5 @@
 import { validateConcept } from "./concepts";
+import { openingSpeech, normalizeSpeech } from "./transcript-timing";
 import { recognitionFlags } from "./transcript";
 import type { Analysis, AnalysisV2, MediaEvidence, Reel } from "./types";
 export interface EvidenceSource { id: string; kind: "frame" | "transcript" | "metric" | "metadata"; label: string; seconds: number | null; endSeconds?: number; text: string; file?: string; origin?: "asr" | "user-reviewed"; flags?: string[] }
@@ -17,15 +18,21 @@ export function evidenceSources(reel: Reel, evidence: MediaEvidence): EvidenceSo
 export function validateAnalysis(report: AnalysisV2, evidence: MediaEvidence, sources: EvidenceSource[]): void {
   const allowed = new Set(sources.map(source => source.id));
   const check = (ids: string[]) => { if (!ids.length || ids.some(id => !allowed.has(id))) throw new Error("The report referenced evidence that was not supplied. Retry analysis."); };
+  const checkCreative = (ids: string[]) => {
+    check(ids);
+    if (!sources.some(source => ids.includes(source.id) && ["frame", "transcript"].includes(source.kind))) throw new Error("An editorial recommendation needs frame or transcript evidence. Public counts alone cannot support a creative judgement. Retry analysis.");
+  };
   check(report.hook.evidenceIds);
-  check(report.editorial.evidenceIds);
-  for (const change of report.editorial.changes) check(change.evidenceIds);
+  checkCreative(report.editorial.evidenceIds);
+  checkCreative(report.editorial.keep.evidenceIds);
+  checkCreative(report.editorial.nextTest.evidenceIds);
+  for (const change of report.editorial.changes) checkCreative(change.evidenceIds);
   const spoken=report.hook.spokenHook.trim();
-  const normalize=(text:string)=>text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();
+  const normalize = normalizeSpeech;
   const unavailable=/^(?:unavailable|not available|not supplied|no (?:clear |spoken |transcribed )?speech|no spoken hook|no words)[.!]?$/i.test(spoken);
   if(spoken && !unavailable) {
-    const citedSpeech = sources.filter(source => source.kind === "transcript" && report.hook.evidenceIds.includes(source.id) && source.seconds !== null && source.seconds <= 3).map(source => source.text).join(" ");
-    if (!normalize(spoken) || !normalize(citedSpeech).includes(normalize(spoken))) throw new Error("The spoken hook is not an exact excerpt from cited opening transcript segments. Retry analysis.");
+    const citedSpeech = openingSpeech(evidence.transcript).filter(source => report.hook.evidenceIds.includes(source.id)).map(source => source.text).join(" ");
+    if (!normalize(spoken) || !` ${normalize(citedSpeech)} `.includes(` ${normalize(spoken)} `)) throw new Error("The spoken hook is not an exact excerpt from cited opening transcript segments. Retry analysis.");
   }
   for (const item of [...report.beats, ...report.observations, ...report.hypotheses, ...report.findings, ...report.suggestedAngles]) check(item.evidenceIds);
   for (const ids of [report.support.summary, report.support.pacing, report.support.payoff, report.support.cta, ...report.support.patterns]) check(ids);

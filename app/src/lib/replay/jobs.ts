@@ -13,6 +13,10 @@ import type { Job, Phase, Settings } from "./types";
 import { assertMediaAvailable } from "./media-lock";
 import { assertConnection, captureRunSettings } from "./run-config";
 import { prepareModelExecution } from "./model-execution";
+import path from "node:path";
+import { mediaDir } from "./paths";
+import { transcribeVideo } from "./transcription";
+import { transcriptEditVersion } from "./transcript";
 
 type Runner = { initialized: boolean; running: boolean; active: Map<string, AbortController> };
 const globalRunner = globalThis as typeof globalThis & { replayRunner?: Runner };
@@ -88,6 +92,19 @@ async function execute(initial: Job) {
       signal.throwIfAborted(); ingest(result.reels);
       saveAccount({ ...getAccount(account.id)!, lastFetchedAt: new Date().toISOString(), requestedLimit: initial.params.limit || 50, lastFetchedCount: result.reels.length, collectionNote: result.note });
       update({ completed: 1, phase: "completed", detail: result.reels.length ? `Collected ${result.reels.length} Reels. Select the ones to analyze.` : "No public Reels were returned. Check the handle and account visibility." });
+    } else if (initial.kind === "transcribe") {
+      const reel = getReel(initial.reelIds[0]), options = initial.params.transcription;
+      if (!reel?.evidence?.hasAudio || !options) throw new Error("This video has no saved audio evidence to transcribe.");
+      if (transcriptEditVersion(reel) !== options.expectedRevision) throw new Error("The transcript changed after this retry was requested. Review it before trying again.");
+      update({ phase: "transcribing", currentReelId: reel.id, detail: `Transcribing locally with Whisper ${options.model}. ${options.language ? `Language: ${options.language}.` : "Detecting language."} First use may download the model. No LLM usage.` });
+      const transcript = await transcribeVideo(path.join(mediaDir(reel.id), "video.mp4"), options, reel.evidence.duration, signal);
+      signal.throwIfAborted();
+      const latest = getReel(reel.id)!;
+      if (transcriptEditVersion(latest) !== options.expectedRevision) throw new Error("The video or transcript changed during recognition. Your current transcript was kept.");
+      // The DB is authoritative for an explicit retry. Do not replace the
+      // extraction cache before success or leave a cancelled retry published.
+      saveReel({ ...latest, transcriptReview: undefined, evidence: { ...latest.evidence!, transcript, transcriptionSettings: { model: options.model, language: options.language } } });
+      update({ phase: "completed", completed: 1, resultId: reel.id, detail: "Transcript ready to review. Your saved report is unchanged; analyze again when the wording is right." });
     } else if (initial.kind === "analyze") {
       for (const [index, id] of initial.reelIds.entries()) {
         signal.throwIfAborted(); let reel = getReel(id);
@@ -103,6 +120,7 @@ async function execute(initial: Job) {
           reel = { ...getReel(id)!, mediaRevision: getReel(id)!.mediaRevision || randomUUID() }; saveReel(reel);
           const evidence = await extractEvidence(reel, settings, signal, phase);
           reel = { ...getReel(id)!, evidence };
+          saveReel(reel);
           phase("analyzing", `Analyzing frames and transcript with ${settings.provider === "codex" ? "your Codex login" : "the OpenAI API"}.`);
           const result = await analyze({ ...reel, performance: performanceFor(reel, getReels()) }, evidence, settings, signal);
           signal.throwIfAborted();

@@ -42,11 +42,11 @@ export function JobActivity({
           role="region"
           className="active-job"
           key={job.id}
-          aria-label={`${job.kind === "collect" ? "Collection" : job.kind === "compare" ? "Comparison" : "Analysis"} job`}
+          aria-label={`${job.kind === "collect" ? "Collection" : job.kind === "compare" ? "Comparison" : job.kind === "transcribe" ? "Transcription" : "Analysis"} job`}
         >
           <div className="active-job-heading">
             <strong>
-              {job.kind === "collect"
+              {job.kind === "transcribe" ? "Transcribing locally" : job.kind === "collect"
                 ? "Collecting Reels"
                 : job.kind === "compare"
                   ? "Comparing reports"
@@ -127,7 +127,7 @@ export function JobActivity({
                     disabled={busy}
                     onClick={() => retry(job)}
                   >
-                    Retry
+                    {job.kind === "transcribe" ? "Review & retry" : "Retry"}
                   </Button>
                 )}
                 {job.kind === "analyze" &&
@@ -148,7 +148,7 @@ export function JobActivity({
                     className="btn small"
                     onClick={() => openReport(job.resultId!)}
                   >
-                    Open report
+                    {job.kind === "transcribe" ? "Open video" : "Open report"}
                   </Button>
                 )}
               </div>

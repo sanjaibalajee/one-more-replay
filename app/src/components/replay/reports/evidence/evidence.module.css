@@ -20,6 +20,7 @@
   font-size: 0.8rem;
   line-height: 1.6;
   margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
 }
 .actions {
   display: flex;
@@ -133,7 +134,54 @@
   margin: 0.6rem 0;
   padding-left: 1rem;
 }
+.activeWord {
+  background: var(--foreground);
+  color: var(--background);
+  border-radius: 0.2rem;
+}
+.retry {
+  display: grid;
+  gap: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  padding: 1rem;
+}
+.retry h4 {
+  margin: 0;
+}
+.retryFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+.retryFields label {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.retryFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.confirm {
+  display: flex;
+  align-items: start;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.confirm button {
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
 @media (max-width: 620px) {
+  .retryFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .heading {
     flex-direction: column;
     gap: 0.7rem;
