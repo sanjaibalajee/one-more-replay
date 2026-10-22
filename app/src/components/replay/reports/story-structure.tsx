@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { EvidenceSource } from "@/lib/replay/evidence";
 import type { Analysis } from "@/lib/replay/types";
 import { ArrowRight } from "lucide-react";
+import { TechniqueNotes } from "./craft/technique-notes";
 
 export function StoryStructure({
   analysis: a,
@@ -96,6 +97,7 @@ export function StoryStructure({
         <p>{structure?.cta.summary || a.cta}</p>
         {proof(structure?.cta.evidenceIds || a.support?.cta)}
       </section>
+      <TechniqueNotes notes={a.craft} proof={proof} />
     </section>
   );
 }

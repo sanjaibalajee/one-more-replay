@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { craftNotesSchema } from "./craft/schema";
 
 export const formatSchema = z.enum(["talking-head", "demonstration", "tutorial", "story", "montage", "interview", "other"]);
 const refs = z.array(z.string()).min(1).max(8);
@@ -26,6 +27,7 @@ const storyPartSchema = z.object({ summary: z.string().trim().min(1).max(500), s
 export const storyStructureSchema = z.object({ hook: storyPartSchema, body: storyPartSchema, cta: storyPartSchema });
 // Optional additions keep previously saved reports readable. New model output uses analysisSchema below.
 export const storedAnalysisSchema = z.object({
+  craft: craftNotesSchema.optional(),
   editorial: editorialSchema.optional(),
   title: z.string(), summary: z.string(), storyStructure: storyStructureSchema.optional(),
   classification: z.object({ hookType: z.enum(["question", "result-first", "contrarian", "curiosity", "problem", "story", "demonstration", "list", "other", "unknown"]), ctaType: z.enum(["follow", "comment", "save", "share", "visit", "buy", "none-observed", "other", "unknown"]) }).optional(),
@@ -40,6 +42,7 @@ export const storedAnalysisSchema = z.object({
   support: z.object({ summary: refs, pacing: refs, payoff: refs, cta: refs, patterns: z.array(refs) }).optional(),
 });
 export const analysisSchema = storedAnalysisSchema.extend({
+  craft: craftNotesSchema,
   editorial: editorialSchema.extend({ keep: editorialSchema.shape.keep.unwrap(), nextTest: editorialSchema.shape.nextTest.unwrap() }),
   version: z.literal(2), format: formatSchema,
   classification: storedAnalysisSchema.shape.classification.unwrap(), storyStructure: storyStructureSchema,
@@ -57,7 +60,7 @@ export const comparisonSchema = z.object({
   differences: z.array(z.string()), nextExperiments: z.array(z.string()), limitations: z.array(z.string()),
 });
 export const comparisonV2Schema = comparisonSchema.extend({ patterns: z.array(comparisonSchema.shape.patterns.element.extend({ examples: z.array(z.object({ reelId: z.string(), evidenceIds: refs })).min(2) })) });
-export type Analysis = z.infer<typeof storedAnalysisSchema> & { promptRevision?: string; transcriptRevision?: string; sources?: import("./evidence").EvidenceSource[] };
+export type Analysis = z.infer<typeof storedAnalysisSchema> & { craftRevision?: string; promptRevision?: string; transcriptRevision?: string; sources?: import("./evidence").EvidenceSource[] };
 export type AnalysisV2 = z.infer<typeof analysisSchema>;
 export type Comparison = z.infer<typeof comparisonSchema>;
 export type Provider = "codex" | "openai";

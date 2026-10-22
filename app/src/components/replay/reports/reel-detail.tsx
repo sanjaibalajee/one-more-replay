@@ -459,7 +459,7 @@ export function ReelDetail({
                     />
                     <Disclosure
                       className="story-disclosure"
-                      title={<>Hook, body & ending</>}
+                      title={a.craft?.length ? <>Story & techniques</> : <>Hook, body & ending</>}
                     >
                       <StoryStructure
                         analysis={a}

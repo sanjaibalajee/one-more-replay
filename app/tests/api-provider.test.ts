@@ -32,6 +32,8 @@ test("API analysis sends image inputs, strict schema, brief and the chosen reaso
     const response = await analyze(reel, evidence, settings, new AbortController().signal);
     assert.deepEqual(sent?.reasoning, { effort: "high" }); assert.equal(sent?.store, false);
     const body = JSON.stringify(sent); assert.match(body, /input_image/); assert.match(body, /json_schema/); assert.match(body, /One person and phone/);
+    assert.match(body, /CREATIVE CRAFT KNOWLEDGE/); assert.match(body, /stepwise-teaching/); assert.match(body, /not a scorecard/);
+    assert.ok(response.result.craftRevision);
     assert.equal(response.result.version, 2); assert.equal(response.result.suggestedAngles.length, 3);
     const markdown = reelMarkdown({ ...reel, analysis: response.result });
     assert.match(markdown, /## Evidence index/); assert.match(markdown, /Say: Synthetic opening 1/); assert.match(markdown, /F1 \[0:00\]/);

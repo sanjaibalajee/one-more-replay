@@ -1,5 +1,6 @@
 import type { Account, Reel } from "./types";
 import { currentTranscript } from "./transcript";
+import { techniqueLabels } from "./craft/techniques";
 const normalize = (value: string) =>
   value.normalize("NFKC").toLocaleLowerCase();
 export function buildCatalogueSearch(
@@ -25,6 +26,7 @@ export function buildCatalogueSearch(
         report?.hook.spokenHook,
         report?.hook.visualHook,
         report?.editorial?.verdict,
+        ...(report?.craft || []).map(note => `${techniqueLabels[note.technique]} ${note.observation} ${note.mechanism} ${note.tradeoff} ${note.adaptation}`),
         ...(report?.transferablePatterns || []),
         ...(report?.findings || []).map(
           (finding) => `${finding.title} ${finding.detail}`,

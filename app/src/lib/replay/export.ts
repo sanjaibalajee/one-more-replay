@@ -1,5 +1,6 @@
 import type { Reel, SavedComparison } from "./types";
 import { sourcesFor } from "./evidence";
+import { techniqueLabels } from "./craft/techniques";
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 export function reelMarkdown(reel: Reel): string {
   const a = reel.analysis; if (!a) throw new Error("This Reel has no completed report.");
@@ -13,6 +14,7 @@ export function reelMarkdown(reel: Reel): string {
     ...(a.editorial?.keep ? ["## Keep this", a.editorial.keep.detail, cite(a.editorial.keep.evidenceIds)] : []),
     ...(a.editorial?.nextTest ? ["## One test to try", a.editorial.nextTest.change, `Keep constant: ${a.editorial.nextTest.keepConstant}`, `Measure: ${a.editorial.nextTest.measure}`, cite(a.editorial.nextTest.evidenceIds)] : []),
     ...(a.findings?.length ? ["## Distinctive details and critical findings", ...a.findings.map(f => `### ${f.title} (${f.kind})\n${f.detail}\n\n${cite(f.evidenceIds)}`)] : []),
+    ...(a.craft?.length ? ["## Creative techniques", ...a.craft.map(note => `### ${techniqueLabels[note.technique]} (${note.status})\n${note.observation}\n\nWhat it does: ${note.mechanism}\n\nTradeoff: ${note.tradeoff}\n\nAdaptation: ${note.adaptation}\n\n${cite(note.evidenceIds)}`)] : []),
     "## Opening hook", `**${a.hook.label}**`, `Spoken: ${a.hook.spokenHook}`, `Visual: ${a.hook.visualHook}`, a.hook.explanation, cite(a.hook.evidenceIds),
     "## Story beats", ...a.beats.map(b => `- ${time(b.startSeconds)}–${time(b.endSeconds)}: ${b.whatHappens} — ${b.purpose}`),
     "## Observed evidence", ...a.observations.map(o => `- ${time(o.timestampSeconds)} [${o.category}]: ${o.detail}`),

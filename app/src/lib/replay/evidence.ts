@@ -1,4 +1,5 @@
 import { validateConcept } from "./concepts";
+import { validateCraftNotes } from "./craft/validate";
 import { openingSpeech, normalizeSpeech } from "./transcript-timing";
 import { recognitionFlags } from "./transcript";
 import type { Analysis, AnalysisV2, MediaEvidence, Reel } from "./types";
@@ -16,6 +17,7 @@ export function evidenceSources(reel: Reel, evidence: MediaEvidence): EvidenceSo
   return sources;
 }
 export function validateAnalysis(report: AnalysisV2, evidence: MediaEvidence, sources: EvidenceSource[]): void {
+  validateCraftNotes(report.craft, sources, evidence.duration);
   const allowed = new Set(sources.map(source => source.id));
   const check = (ids: string[]) => { if (!ids.length || ids.some(id => !allowed.has(id))) throw new Error("The report referenced evidence that was not supplied. Retry analysis."); };
   const checkCreative = (ids: string[]) => {

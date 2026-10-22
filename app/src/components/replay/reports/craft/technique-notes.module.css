@@ -1,0 +1,48 @@
+.notes {
+  border-top: 1px solid var(--border);
+  padding-top: 1.4rem;
+  margin-top: 1.4rem;
+}
+.notes h3 {
+  margin: 0 0 0.6rem;
+}
+.intro {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.notes article {
+  margin-top: 1.25rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border);
+}
+.notes header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: space-between;
+  align-items: start;
+}
+.notes h4 {
+  font-size: 0.9rem;
+  margin: 0;
+}
+.notes p,
+.notes dd {
+  font-size: 0.85rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.notes dl {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0 0;
+}
+.notes dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.notes dd {
+  margin: 0 0 0.7rem;
+  color: var(--muted-foreground);
+}
