@@ -1,0 +1,116 @@
+.library {
+  margin-top: 24px;
+}
+.libraryHeader,
+.cardStage,
+.draftMetadata,
+.readerHeading,
+.readerControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.libraryHeader {
+  margin-bottom: 20px;
+}
+.libraryHeader h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.cardStage small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.draftMetadata {
+  gap: 8px;
+}
+.draftHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.workbenchClosed {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 850px;
+  margin-inline: auto;
+}
+.workbenchClosed :global(.idea-chat-pane) {
+  display: none !important;
+}
+.reader {
+  width: 100%;
+  max-width: 850px;
+  margin-inline: auto;
+}
+:global(.workspace-page):has(.reader) > :global(.page-back),
+:global(.workspace-page):has(.reader) > :global(.workspace-page-heading) {
+  display: none;
+}
+.readerHeading {
+  margin-bottom: 16px;
+}
+.readerHeading p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.reader h1 {
+  font-size: clamp(20px, 3vw, 28px);
+  line-height: 1.3;
+  margin-bottom: 20px;
+  overflow-wrap: anywhere;
+}
+.readerControls {
+  justify-content: flex-start;
+  margin-bottom: 16px;
+  gap: 8px;
+}
+.readerViewport {
+  height: min(62dvh, 640px);
+  min-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  padding: clamp(20px, 5vw, 48px);
+  padding-bottom: 50dvh;
+  font-size: clamp(24px, 3.2vw, 38px);
+  line-height: 1.65;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.readerViewport:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.readerViewport section + section {
+  margin-top: 1.25em;
+}
+.readerViewport h3 {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-bottom: 10px;
+}
+.readerViewport p {
+  white-space: pre-wrap;
+}
+.reader > p:last-child {
+  margin-top: 16px;
+}
+@media (max-width: 620px) {
+  .readerHeading {
+    align-items: flex-start;
+  }
+  .readerHeading p {
+    width: 100%;
+  }
+  .readerViewport {
+    border-radius: 14px;
+  }
+}

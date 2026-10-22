@@ -1,0 +1,4 @@
+faster-whisper==1.2.1
+# PyAV 19 removed metadata_errors from av.open; faster-whisper 1.2.1 still uses it.
+av==16.0.1
+yt-dlp[default]>=2026.8.19

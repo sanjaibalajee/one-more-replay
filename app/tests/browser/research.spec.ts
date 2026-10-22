@@ -1,0 +1,105 @@
+import { test, expect } from "@playwright/test";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+import { reportFixture } from "../fixtures/report";
+import { evidenceSources } from "../../src/lib/replay/evidence";
+import type { MediaEvidence, Reel, Snapshot } from "../../src/lib/replay/types";
+
+test("collections, creator roles, notes and hook filters persist through the real API",async({page,request})=>{
+  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
+  const account=await (await request.post("/api/replay",{data:{action:"account",handle:"research_creator",role:"own"}})).json();
+  const rows=[0,1].map(i=>({url:`https://www.instagram.com/reel/ResearchPattern${i}/`,caption:`Pattern research example ${i}`,ownerUsername:"research_creator",videoDuration:20,videoPlayCount:1000+i}));
+  expect((await request.post("/api/replay",{data:{action:"import",accountId:account.id,rows}})).status()).toBe(200);
+  await page.goto("/");await page.getByRole("button",{name:/@research_creator/}).click();
+  await page.getByRole("button",{name:"Manage account",exact:true}).click();await expect(page.getByLabel("Account role",{exact:true})).toHaveValue("own");
+  await page.getByRole("checkbox",{name:"Select Reel ResearchPattern0",exact:true}).check();
+  await page.getByRole("checkbox",{name:"Select Reel ResearchPattern1",exact:true}).check();
+  await page.getByRole("button",{name:"Add to collection",exact:true}).click();
+  await page.getByLabel("New collection name").fill("Openings worth trying");
+  await page.getByRole("button",{name:"Create & add videos"}).click();
+  await expect(page.locator(".workspace-page")).not.toBeVisible();
+  const snapshot:Snapshot=await(await request.get("/api/replay")).json();const reel=snapshot.reels.find(r=>r.shortcode==="ResearchPattern0")!;
+  expect(snapshot.collections.find(c=>c.name==="Openings worth trying")?.reelIds).toHaveLength(2);
+  expect(snapshot.jobs.filter(j=>j.reelIds.includes(reel.id))).toHaveLength(0);
+  await page.goto(`/?reel=${reel.id}`);await page.getByRole("button",{name:"Notes & organization",exact:true}).click();await page.getByText("Notes & categories",{exact:true}).click();
+  await page.getByLabel("Your notes").fill("Reveal the finished object before the setup.");
+  await page.getByLabel("Tags, separated by commas").fill("phone, result reveal");
+  await page.getByLabel("Hook category").selectOption("result-first");await page.getByLabel("CTA category").selectOption("save");
+  await page.getByRole("button",{name:"Save notes",exact:true}).click();await expect(page.getByRole("status")).toHaveText("Saved");
+  await page.getByRole("button",{name:"Back",exact:true}).click();
+  await page.getByRole("button",{name:"Inspiration",exact:true}).click();
+  await page.getByRole("button",{name:/Openings worth trying/}).click();
+  await expect(page.locator(".pattern-card")).toHaveCount(2);
+  await page.getByLabel("Search patterns").fill("finished object");await expect(page.locator(".pattern-card")).toHaveCount(1);
+  await page.getByLabel("Hook type",{exact:true}).selectOption("question");await expect(page.getByRole("heading",{name:"No matching patterns"})).toBeVisible();
+  await page.getByLabel("Hook type",{exact:true}).selectOption("result-first");await expect(page.locator(".pattern-card")).toHaveCount(1);
+  await page.reload();await page.getByRole("button",{name:"Inspiration",exact:true}).click();
+  await page.getByRole("button",{name:/Saved patterns/}).click();
+  await expect(page.locator(".pattern-card").filter({hasText:"Reveal the finished object"})).toHaveCount(1);
+  await page.getByRole("button",{name:/Openings worth trying/}).click();await page.getByRole("button",{name:"Edit collection"}).click();
+  await page.getByLabel("Collection name",{exact:true}).fill("Result openings");await page.getByRole("button",{name:"Save collection",exact:true}).click();
+  await expect(page.locator(".coverage-bar strong")).toHaveText("Result openings");
+  await page.getByRole("button", {name:"More",exact:true}).click(); await page.getByRole("menuitem", {name:"Niche analytics",exact:true}).click();await page.getByLabel("Account",{exact:true}).selectOption(account.id);
+  await expect(page.locator(".research-stats")).toContainText("1 / 2");
+  await page.getByRole("button",{name:"result first",exact:true}).click();await expect(page.locator(".research-example-list>button")).toHaveCount(1);
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  mkdirSync(path.resolve("../.local/qa"),{recursive:true});await page.screenshot({path:path.resolve("../.local/qa/research-analytics-mobile.png"),fullPage:true});
+  expect(errors).toEqual([]);
+});
+
+test("adaptation and creative gaps send only the explicitly selected source IDs",async({page,request})=>{
+  const data:Snapshot=await(await request.get("/api/replay")).json();const now="2026-10-22T00:00:00Z";
+  const evidence:MediaEvidence={duration:12,width:180,height:320,hasAudio:true,frames:[{file:"frame-00.jpg",seconds:5}],sceneChanges:[],transcript:{text:"Synthetic words.",segments:[{start:0,end:3,text:"Synthetic words."}],language:"en",engine:"fixture",model:"base",status:"completed",note:"Synthetic UI evidence."},warnings:[]};
+  const base=data.reels.find(r=>r.shortcode==="ResearchPattern0")!;expect(base).toBeTruthy();
+  const own:Reel={...base,id:"own-linked",shortcode:"OwnLinked",caption:"Own synthetic demonstration",analysis:reportFixture(),evidence,status:"completed",analyzedAt:now};own.analysis!.sources=evidenceSources(own,evidence);
+  const peerAccount={...data.accounts.find(a=>a.id===own.accountId)!,id:"peer-account",username:"peer_creator",role:"competitor" as const};
+  const peer={...own,creatorKey:"instagram:peer_creator",id:"peer-linked",accountId:peerAccount.id,caption:"Peer synthetic demonstration",shortcode:"PeerLinked"};
+  data.accounts.push(peerAccount);data.reels=[own,peer];data.jobs=[];
+  const requests:Record<string,unknown>[]=[];
+  await page.route("**/api/replay",async route=>{if(route.request().method()==="GET")return route.fulfill({json:data});const body=route.request().postDataJSON();requests.push(body);return route.fulfill({status:202,json:{id:"synthetic-generation"}});});
+  await page.goto("/?reel=peer-linked");await page.getByRole("button",{name:"Adapt this pattern",exact:true}).click();
+  await page.getByLabel("What do you want to make a video about?").fill("A cooking test using only a phone in my kitchen");
+  await page.getByRole("button",{name:"Create three concepts"}).click();await expect.poll(()=>requests.length).toBe(1);
+  expect(requests[0]).toMatchObject({action:"adapt",reelId:peer.id,topic:"A cooking test using only a phone in my kitchen"});
+  await page.getByRole("button", {name:"More",exact:true}).click(); await page.getByRole("menuitem", {name:"Creative gaps",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Find creative opportunities"})).toBeDisabled();
+  await page.locator(".gap-columns").getByRole("checkbox").nth(0).check();await page.locator(".gap-columns").getByRole("checkbox").nth(1).check();
+  await expect(page.locator(".gap-review")).toContainText("1 matched pair");
+  await page.getByRole("button",{name:"Find creative opportunities"}).click();
+  expect(requests[1]).toEqual({action:"gap",ownIds:[own.id],competitorIds:[peer.id]});
+  for(const theme of ["light","dark"]) {await page.getByLabel("Appearance",{exact:true}).selectOption(theme);await page.screenshot({path:path.resolve(`../.local/qa/creative-gaps-${theme}.png`),fullPage:true});}
+});
+
+test("saved adaptations render three shot lists and jump to their frozen source moments",async({page,request})=>{
+  const data:Snapshot=await(await request.get("/api/replay")).json(),base=data.reels[0] || {accountId:"source-fixture",shortcode:"SyntheticSource",caption:"Synthetic source",url:"",thumbnail:"",videoUrl:"",views:null,likes:null,comments:null,postedAt:null,collectedAt:"2026-10-22T00:00:00Z",source:"import" as const,status:"completed" as const,error:null,starred:false,evidence:null,analysisProvider:"Synthetic fixture"},r:Reel={...base,id:"source-moment",analysis:reportFixture(),analyzedAt:"2026-10-22T00:00:00Z"};
+  r.analysis!.sources=[{id:"F1",kind:"frame",seconds:5,label:"Frame 1",text:"A supplied frame at five seconds",file:"frame-00.jpg"},{id:"T1",kind:"transcript",seconds:0,label:"Transcript",text:"Synthetic words."}];
+  data.reels=[r];data.jobs=[];data.research=[{id:"adapt-ui",kind:"adapt",reelIds:[r.id],createdAt:r.analyzedAt!,provider:"Synthetic UI fixture",brief:JSON.stringify({business:"Independent cooking creator",constraints:"Phone, one person"}),sourcesByReel:{[r.id]:r.analysis!.sources},reportVersions:{[r.id]:r.analyzedAt},report:{title:"Three specific cooking concepts",mechanism:"Show an observable result before the explanation",evidenceIds:["F1"],assumptions:["Synthetic fixture."],concepts:reportFixture().suggestedAngles,limitations:["Synthetic data, no live performance evidence."]}}];
+  await page.route("**/api/replay",route=>route.request().method()==="GET" ? route.fulfill({json:data}) : route.abort());
+  await page.goto("/?research=adapt-ui");await expect(page.locator(".idea")).toHaveCount(3);await expect(page.locator(".shot")).toHaveCount(9);
+  await expect(page.getByRole("link",{name:"Markdown",exact:true})).toHaveAttribute("href","/api/replay/export?id=adapt-ui&type=research");
+  await page.locator(".research-citations button").first().click();await expect(page.locator(".evidence-focus")).toContainText("Frame 1 · 0:05");
+  expect(new URL(page.url()).searchParams.get("source")).toBe("F1");
+  r.analyzedAt="2026-10-22T01:00:00Z";
+  await page.goto("/?research=adapt-ui");
+  await expect(page.locator(".workspace-page")).toContainText("Some videos have been re-analyzed");
+  await page.locator(".research-citations button").first().click();
+  expect(new URL(page.url()).searchParams.has("source")).toBe(false);
+  expect(new URL(page.url()).searchParams.get("reel")).toBe(r.id);
+});
+
+test("single-link form queues only link ingestion, and blocked links retain an upload path",async({page,request})=>{
+  const data:Snapshot=await(await request.get("/api/replay")).json();let sent:Record<string,unknown>|null=null;
+  await page.route("**/api/replay",route=>{if(route.request().method()==="GET")return route.fulfill({json:data});sent=route.request().postDataJSON();
+    const now=new Date().toISOString(); data.reels[0]={...data.reels[0],source:"link",platform:"youtube",analysis:null,url:"https://www.youtube.com/watch?v=abcdefghijk"};
+    data.jobs=[{id:"link-metadata-fixture",kind:"resolve",accountId:data.reels[0].accountId,reelIds:[data.reels[0].id],phase:"resolving",detail:"Fetching public video details. No AI analysis.",completed:0,total:1,errors:[],createdAt:now,updatedAt:now,resultId:null,params:{}}];
+    return route.fulfill({status:202,json:{id:data.reels[0].id,existing:false}});});
+  await page.goto("/");await page.getByRole("button",{name:"Add",exact:true}).click(); await page.getByRole("menuitem",{name:"Add link",exact:true}).click();
+  await page.getByLabel("Video URL",{exact:true}).fill("https://www.youtube.com/shorts/abcdefghijk");await page.getByRole("button",{name:"Add video link",exact:true}).click();
+  expect(sent).toEqual({action:"link",url:"https://www.youtube.com/shorts/abcdefghijk"});
+  await expect(page.getByRole("heading",{name:"Fetching video details",exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Fetching details…",exact:true})).toBeDisabled();
+  data.jobs[0].phase="failed";data.jobs[0].detail="Platform sign-in check";data.reels[0].error="Public download blocked. Upload the video file instead.";
+  await page.reload();await expect(page.locator(".workspace-page")).toContainText("Public download blocked");
+  await expect(page.getByRole("button",{name:"Supply a video file",exact:true})).toBeEnabled();
+  expect((await request.post("/api/replay",{data:{action:"link",url:"https://evil.example/video"}})).status()).toBe(400);
+});

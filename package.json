@@ -1,0 +1,22 @@
+{
+  "name": "one-more-replay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Collect competitor Reels, choose what deserves a closer look, and research it with your local Codex login.",
+  "scripts": {
+    "setup": "npm --prefix app ci",
+    "setup:media": "node scripts/setup-media.mjs",
+    "dev": "npm --prefix app run dev",
+    "build": "npm --prefix app run build",
+    "start": "npm --prefix app run start",
+    "lint": "npm --prefix app run lint",
+    "typecheck": "npm --prefix app run typecheck",
+    "test": "npm --prefix app run test",
+    "test:e2e": "npm --prefix app run test:e2e",
+    "replay": "node scripts/replay.mjs",
+    "test:media": "npm --prefix app run test:media"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

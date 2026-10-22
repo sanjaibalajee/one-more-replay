@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../styles/shadcn.css";
+@import "../styles/theme.css";
+@import "../styles/replay.css";
+@import "../styles/workspace.css";
+
+@custom-variant dark (&:is([data-theme="dark"] *));
